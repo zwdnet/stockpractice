@@ -13,6 +13,7 @@ from mplfinance.original_flavor import candlestick2_ohlc
 import os
 import datetime
 from dateutil.relativedelta import relativedelta
+import talib
 
 
 # 设置显示环境
@@ -27,11 +28,11 @@ def getRecentData(path = "result.csv", refresh = False):
     data = pd.read_csv(path, converters = {'code':str}).代码.values
     codes = []
     # print(data)
-    # 获取股票最近三个月数据
+    # 获取股票最近一个月数据
     if refresh == True:
         today = datetime.date.today().strftime("%Y%m%d")
         # print("今天日期:", today)
-        lastmonth = (datetime.date.today() - relativedelta(months = 3)).strftime("%Y%m%d")
+        lastmonth = (datetime.date.today() - relativedelta(months = 1)).strftime("%Y%m%d")
         # print("上月日期:", lastmonth)
         for i in data:
             codes.append(i[2:])
@@ -82,6 +83,34 @@ def drawKLine(code):
         plt.close()
     else:
         print("无股票数据")
+        
+        
+# 检测k线有无锤头形态
+@run.change_dir
+def testChuizi(codes):
+    print("检测锤子形态")
+    results = {}
+    for code in codes:
+        date = []
+        filename = "./data/" + code + ".csv"
+        if os.path.exists(filename):
+            data = pd.read_csv(filename)
+            result = talib.CDLHAMMER(data.开盘.values, data.最高.values, data.最低.values, data.收盘.values)
+            pos = ()
+            pos = list(np.nonzero(result))
+            if len(pos[0]) != 0:
+                date.append(data.日期[pos[0][-1]])
+                results[code] = date
+    return results
+    
+    
+# 获取指定股票代码集合的k线符合锤子线的位置
+def getChuizi(codes):
+    results = testChuizi(codes)
+    # 按日期降序排序，最近的日期排最前
+    results = sorted(results.items(),key = lambda x:x[1],reverse = True)
+    print(results)
+    return results
 
 
 if __name__ == "__main__":
@@ -89,3 +118,4 @@ if __name__ == "__main__":
     codes = getRecentData(refresh = False)
     print(codes)
     drawKLine(codes[0])
+    results = getChuizi(codes)
