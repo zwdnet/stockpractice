@@ -160,7 +160,7 @@ def multiBacktest(codes, method):
     rates = []
     win_rates = []
     for gap in range(3, 20):
-        for rate in np.arange(0.05, 0.06, 0.01):
+        for rate in np.arange(0.05, 0.1, 0.01):
             win, fail, total = doTest(gap, rate, codes, method)
             win_rate = win/total
             gaps.append(gap)
@@ -204,5 +204,5 @@ if __name__ == "__main__":
     print(result)
     # doBacktest(codes, method)
     # backtest(codes)
-    multiBacktest(codes, talib.CDLBREAKAWAY)
+    multiBacktest(codes, talib.CDLPIERCING)
     

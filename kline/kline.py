@@ -55,7 +55,7 @@ def drawKLine(code):
     if os.path.exists(filename):
         # 画k线
         data = pd.read_csv(filename)
-        print(data.info())
+        # print(data.info())
         fig, ax = plt.subplots(1, 1, figsize=(8,3), dpi=200)
         candlestick2_ohlc(ax,
                 opens = data[ '开盘'].values,
@@ -85,17 +85,17 @@ def drawKLine(code):
         print("无股票数据")
         
         
-# 检测k线有无锤头形态
+# 检测k线有无method所定义的形态
 @run.change_dir
-def testChuizi(codes):
-    print("检测锤子形态")
+def test(codes, method):
+    print("检测k线形态")
     results = {}
     for code in codes:
         date = []
         filename = "./data/" + code + ".csv"
         if os.path.exists(filename):
             data = pd.read_csv(filename)
-            result = talib.CDLHAMMER(data.开盘.values, data.最高.values, data.最低.values, data.收盘.values)
+            result = method(data.开盘.values, data.最高.values, data.最低.values, data.收盘.values)
             pos = ()
             pos = list(np.nonzero(result))
             if len(pos[0]) != 0:
@@ -104,9 +104,9 @@ def testChuizi(codes):
     return results
     
     
-# 获取指定股票代码集合的k线符合锤子线的位置
-def getChuizi(codes):
-    results = testChuizi(codes)
+# 获取指定股票代码集合的k线符合method形态的位置
+def getPosition(codes, method):
+    results = test(codes, method)
     # 按日期降序排序，最近的日期排最前
     results = sorted(results.items(),key = lambda x:x[1],reverse = True)
     print(results)
@@ -116,6 +116,7 @@ def getChuizi(codes):
 if __name__ == "__main__":
     init()
     codes = getRecentData(refresh = False)
-    print(codes)
+    # print(codes)
     drawKLine(codes[0])
-    results = getChuizi(codes)
+    method = talib.CDLMORNINGDOJISTAR
+    results = getPosition(codes, method)
