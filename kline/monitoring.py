@@ -16,6 +16,7 @@ import os
 import datetime
 import time
 from dateutil.relativedelta import relativedelta
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 
 # 检测k线有无method所定义的形态
@@ -92,7 +93,7 @@ def report(date, name, code):
         price = lastestdata.最新价.values[0]
         # print(code, date, name, price)
         date = date.strftime('%Y-%m-%d %H:%M')
-        title = "报告:出现" + name + "形态"
+        title = "报告:" + code[2:] + "出现" + name + "形态"
         content = "股票" + code[2:] + "在" + date + "出现" + name + "形态，股票现价" + str(price)
         print(title, content)
         mail.sentMail(title, content)
@@ -103,8 +104,10 @@ def report(date, name, code):
 def task(codes):
     getRecentData(codes = codes, refresh = True, savePath = "./data2/")
     getPosition(codes)
-    
-    
+    print(now, "执行了一次")
+    time.sleep(s)
+
+"""    
 # 运行死循环，定期检测，每隔s秒检测一次
 @run.change_dir
 def run(codes, s):
@@ -116,10 +119,19 @@ def run(codes, s):
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print(now, "执行了一次")
         time.sleep(s)
+"""
+
+
+# 每间隔s分钟监控codes股票形态
+def run(codes, s):
+    scheduler = BlockingScheduler(timezone="Asia/Chongqing")
+    scheduler.add_job(task, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(s), args = [codes])
+    scheduler.start()
 
 
 if __name__ == "__main__":
-    codes = ["sh600166"]
-    s = 1800
+    code = "sh601668"
+    codes = [code]
+    s = 20
     run(codes, s)
     
