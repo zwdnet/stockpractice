@@ -104,6 +104,7 @@ def report(date, name, code):
 def task(codes):
     getRecentData(codes = codes, refresh = True, savePath = "./data2/")
     getPosition(codes)
+    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(now, "执行了一次")
     time.sleep(s)
 
