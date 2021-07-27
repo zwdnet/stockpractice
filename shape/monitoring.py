@@ -118,9 +118,9 @@ def taskB(stopPrice, codes):
     for code in codes:
         lastestdata = ef.stock.get_latest_stock_info([code[2:]])
         lastPrice = lastestdata.最新价.values[0]
-        print(lastPrice, stopPrice)
-        name = "到达止损价"
-        if lastPrice <= stopPrice:
+        if lastPrice <= stopPrice and lastPrice != 0.0:
+            name = "到达止损价"
+            print(lastPrice, stopPrice)
             title, content = makeContent(date, name, code)
             if title != "" and content != "":
                 tools.sentMail(title, content)
