@@ -9,6 +9,7 @@ import akshare as ak
 import efinance as ef
 import run
 import tools
+import shape
 import talib
 import os
 import datetime
@@ -54,11 +55,11 @@ def getPosition(codes):
     for name, method in methods.items():
         results = test(codes, method)
         if results:
-            print(name, results)
+            # print(name, results)
             date = list(results.values())
             date = datetime.datetime.strptime(date[0][0], '%Y-%m-%d %H:%M')
             days = (today - date).days
-            print(days)
+            # print(days)
             # 如果是今天出现的形态
             code = list(results.keys())[0]
             # 报告两天内出现的
@@ -101,14 +102,13 @@ def makeContent(date, name, code):
         
         
         
-# 进行一次形态检测
+# 进行一次卖出k线形态检测
 @run.change_dir
 def taskA(codes):
     getRecentData(codes = codes, refresh = True, savePath = "./data2/")
     getPosition(codes)
     now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(now, "执行了一次k线形态检测")
-    time.sleep(s)
     
     
 # 进行一次止损价检测
@@ -124,6 +124,26 @@ def taskB(stopPrice, codes):
             title, content = makeContent(date, name, code)
             if title != "" and content != "":
                 tools.sentMail(title, content)
+    
+    
+# 进行一次顶部技术形态监测
+def taskC(codes):
+    date = datetime.datetime.now()
+    print(date, "执行了一次止损价格检测")
+    shapes = ["头肩顶", "三角顶", "矩形顶", "顶部扩散"]
+    for code in codes:
+        for name in shapes:
+            results = shape.shape(code[2:, name)
+            # print(code, name, results)
+            if len(results) != 0:
+                shapename = results.iloc[-1].名称
+                shapedate = results.iloc[-1].日期
+                shapedate = datetime.datetime.strptime(shapedate, '%Y-%m-%d')
+                days = (date - shapedate).days
+                if days <= 2:
+                    title, content = makeContent(shapedate, shapename, code)
+                    if title != "" and content != "":
+                        tools.sentMail(title, content)
     
 
 """    
@@ -146,6 +166,7 @@ def run(codes, s, price):
     scheduler = BlockingScheduler(timezone="Asia/Chongqing")
     scheduler.add_job(taskA, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(s), args = [codes])
     scheduler.add_job(taskB, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [price, codes])
+    scheduler.add_job(taskC, "cron", day_of_week = "mon-fri", hour = "9-23", minute = "*/"+str(1), args = [codes])
     scheduler.start()
 
 
