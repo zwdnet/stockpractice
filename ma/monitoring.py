@@ -9,13 +9,15 @@ import akshare as ak
 import efinance as ef
 import run
 import tools
-import shape
+import ma
+# import shape
 import talib
 import os
 import datetime
 import time
 from dateutil.relativedelta import relativedelta
 from apscheduler.schedulers.blocking import BlockingScheduler
+from dateutil.relativedelta import relativedelta
 
 
 # 检测k线有无method所定义的形态
@@ -125,7 +127,7 @@ def taskB(stopPrice, codes):
             if title != "" and content != "":
                 tools.sentMail(title, content)
     
-    
+"""    
 # 进行一次顶部技术形态监测
 def taskC(codes):
     date = datetime.datetime.now()
@@ -133,7 +135,7 @@ def taskC(codes):
     shapes = ["头肩顶", "三角顶", "矩形顶", "顶部扩散"]
     for code in codes:
         for name in shapes:
-            results = shape.shape(code[2:, name)
+            results = shape.shape(code[2:], name)
             # print(code, name, results)
             if len(results) != 0:
                 shapename = results.iloc[-1].名称
@@ -144,12 +146,29 @@ def taskC(codes):
                     title, content = makeContent(shapedate, shapename, code)
                     if title != "" and content != "":
                         tools.sentMail(title, content)
+"""
                         
                        
 # 进行一次卖出均线检测
 def taskD(codes):
     date = datetime.datetime.now()
     print(date, "执行了一次卖出均线检测")
+    today = datetime.date.today().strftime("%Y%m%d")
+    month = 6
+    savePath = "./pooldata/"
+    months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
+    for code in codes:
+        print(code)
+        stock_data = ak.stock_zh_a_hist(symbol = code[2:], start_date = months, end_date = today, adjust = "qfq")
+        filename = savePath + code[2:] + ".csv"
+        stock_data.to_csv(filename)
+        stock_data = ma.addMA(stock_data)
+        sell = ma.check(stock_data)[1]
+        # 今天出现卖点
+        if len(sell) != 0 and sell[-1] == len(stock_data) - 1:
+            title, content = makeContent(date, str(sell), code)
+            if title != "" and content != "":
+                tools.sentMail(title, content)
     
 
 """    
@@ -170,16 +189,17 @@ def run(codes, s):
 # 每间隔s分钟监控codes股票形态和止损价(1分钟)
 def run(codes, s, price):
     scheduler = BlockingScheduler(timezone="Asia/Chongqing")
-    scheduler.add_job(taskA, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(s), args = [codes])
+    # scheduler.add_job(taskA, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(s), args = [codes])
     scheduler.add_job(taskB, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [price, codes])
-    scheduler.add_job(taskC, "cron", day_of_week = "mon-fri", hour = "9-23", minute = "*/"+str(1), args = [codes])
+    # scheduler.add_job(taskC, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [codes])
+    scheduler.add_job(taskD, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [codes])
     scheduler.start()
 
 
 if __name__ == "__main__":
     code = "sh601619"
     codes = [code]
-    s = 20
+    s = 30
     stopPrice = 3.3
     run(codes, s, stopPrice)
     
