@@ -73,7 +73,11 @@ def getRecentData(path = "./result.csv", refresh = False, savePath = "./pooldata
         # print("今天日期:", today)
         months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
         # print("上月日期:", lastmonth)
+        k = 0.0
+        n = len(data)
         for i in data:
+            k += 1.0
+            print("已下载了", str(k/n*100), "%股票数据\n")
             codes.append(i[2:])
             stock_data = ak.stock_zh_a_hist(symbol = codes[-1], start_date = months, end_date = today, adjust = "qfq")
             filename = savePath + codes[-1] + ".csv"
@@ -94,6 +98,7 @@ def getStockData(code):
     filename = path + code + ".csv"
     if os.path.exists(filename):
         data = pd.read_csv(filename)
+        data.日期 = pd.to_datetime(data.日期)
         return data
     return None
     
