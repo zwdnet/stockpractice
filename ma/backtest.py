@@ -27,6 +27,7 @@ class BackTest:
         self.stake = stake
         self.cerebro = None
         self.results = None
+        self.totalTrade = None
         self.rf = riskfree
         self.initBT()
         
@@ -70,14 +71,19 @@ class BackTest:
         portfolio_stats = self.results[0].analyzers.getbyname('PyFolio')
         self.returns, self.positions, self.transactions, self.gross_lev = portfolio_stats.get_pf_items()
         self.returns.index = self.returns.index.tz_convert(None)
+        self.totalTrade = self.results[0].analyzers.getbyname("TA").get_analysis()
+        # print("测试", self.totalTrade.get_analysis()["total"]["total"])
         # print("回测执行完毕")
         
     # 获取回测结果
     def getResults(self):
         if self.results is None:
             self.__run()
+        # print("测试", self.codes[0])
         results = pd.Series(
-        {#"股票代码":self.codes[0],
+        {
+         "股票代码":self.codes[0],
+         "交易次数":self.totalTrade["total"]["total"],
          "胜率":quantstats.stats.win_rate(returns = self.returns),
          "胜负比率":quantstats.stats.profit_ratio(returns = self.returns),
          "赢率":quantstats.stats.win_loss_ratio(returns = self.returns),
