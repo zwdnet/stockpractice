@@ -84,6 +84,9 @@ class MAcrossover(bt.Strategy):
             if len(self) >= (self.bar_executed + 5):
                 # self.log(f'CLOSE CREATE {self.dataclose[0]:2f}')
                 self.order = self.close()
+                
+    def stop(self):
+        self.order = self.close()
             
             
 class Screener_SMA(bt.Analyzer):

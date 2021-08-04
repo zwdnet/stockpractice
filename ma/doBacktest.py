@@ -20,7 +20,9 @@ from scipy import stats
 def main(refresh = False):
     # 先初始化，准备数据
     tools.init()
-    codes = tools.Research(refresh = refresh, month = 12, highPrice = 10.0)
+    codes = tools.Research(refresh = refresh, month = 60, highPrice = 10.0)
+    benchmark = tools.getBenchmarkData(month = 60, refresh = refresh)
+    # print(benchmark.head())
     datafilepath = "./backtest.csv"
     if os.path.exists(datafilepath) and refresh == False:
         test_res = pd.read_csv(datafilepath, converters = {'股票代码':str})
@@ -30,8 +32,8 @@ def main(refresh = False):
         i = 0
         for code in codes:
             i += 1.0
-            print("回测进度:", i/n*100)
-            backtest = BackTest(codes = [code], strategy = st.MAcrossover)
+            print("回测进度:", i/n*100, "%")
+            backtest = BackTest(codes = [code], strategy = st.MAcrossover, benchmark = benchmark)
             results = backtest.getResults()
             test_res = test_res.append(results)
         test_res.to_csv(datafilepath, index = False)
@@ -77,6 +79,17 @@ def main(refresh = False):
     # 计算交易次数与胜率的相关系数
     r, p = stats.pearsonr(trades, winrates)
     print("交易次数与胜率的相关系数为:%6.3f，概率为:%6.3f" % (r, p))
+    # 画alpha，beta值分布图
+    plt.figure()
+    test_res.Alpha.plot(kind = "kde")
+    plt.ylabel("α")
+    plt.savefig("./output/alpha.png")
+    plt.close()
+    plt.figure()
+    test_res.Beta.plot(kind = "kde")
+    plt.ylabel("β")
+    plt.savefig("./output/beta.png")
+    plt.close()
     
     
 @run.change_dir
@@ -95,6 +108,19 @@ def main2():
     print("b", res2)
     
     
+# 测试，增加计算alpha等指标
+@run.change_dir
+def main3(refresh = False):
+    tools.init()
+    code = "002166"
+    benchmark = tools.getBenchmarkData(month = 60, refresh = refresh, path = "./stockdata/")
+    backtest = BackTest(codes = [code], strategy = st.MAcrossover, benchmark = benchmark, month = 60, refresh = refresh, path = "./stockdata/")
+    results = backtest.getResults()
+    print(results)
+    backtest.drawResults(code + "result")
+    
+    
 if __name__ == "__main__":
-    main()
+    main(refresh = False)
     # main2()
+    # main3(refresh = False)

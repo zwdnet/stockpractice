@@ -5,6 +5,7 @@
 
 import pandas as pd
 import backtrader as bt
+import empyrical as ey
 import run
 import tools
 import strategy as st
@@ -14,12 +15,33 @@ import quantstats
 import imgkit
 import os
 from PIL import Image
+import math
 
+
+# 基准测试类   
+# 买入持有策略
+class BmStrategy(bt.Strategy):
+    def __init__(self):
+        self.order = None
+        self.bBuy = False
+        self.dataclose = self.datas[0].close
+ 
+    def next(self):
+        if self.bBuy == True:
+            return
+        else:
+            cash = self.broker.get_cash()
+            stock = math.ceil(cash/self.dataclose/100)*100 - 100
+            self.order = self.buy(size = stock, price = self.datas[0].close)
+            self.bBuy = True
+ 
+    def stop(self):
+        self.order = self.close()
 
 
 # 封装BackTrader回测过程的类
 class BackTest:
-    def __init__(self, codes, strategy, cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0):
+    def __init__(self, codes, strategy, benchmark = None, month = 6, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False):
         self.cash = cash
         self.commission = commission
         self.codes = codes
@@ -27,8 +49,14 @@ class BackTest:
         self.stake = stake
         self.cerebro = None
         self.results = None
+        self.bm_results = None
         self.totalTrade = None
+        self.bm = None  # 基准类
+        self.benchmark = benchmark
         self.rf = riskfree
+        self.month = month
+        self.path = path
+        self.refresh = refresh
         self.initBT()
         
     # 初始化BackTrader
@@ -39,16 +67,32 @@ class BackTest:
         self.cerebro.addsizer(bt.sizers.SizerFix, stake = self.stake)
         # 准备数据
         for code in self.codes:
-            data = self.data_transform(code)
+            data_df = tools.getStockData(code = code, path = self.path, month = self.month, refresh = self.refresh)
+            data = self.data_transform(code, data_df)
             self.cerebro.adddata(data, name = code)
         self.cerebro.addstrategy(self.strategy)
         self.cerebro.addanalyzer(bt.analyzers.PyFolio, _name='PyFolio')
         self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name = "TA")
+        self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name = "TR")
+        
+        # 初始化基准数据
+        self.bm = bt.Cerebro()
+        self.bm.broker.setcash(self.cash)
+        self.bm.broker.setcommission(self.commission)
+        self.bm.addsizer(bt.sizers.SizerFix, stake = self.stake)
+        # 准备数据
+        # print(self.benchmark.info())
+        data = self.data_transform("BenchMark", self.benchmark)
+        self.bm.adddata(data, name = "BenchMark")
+        # 添加策略和分析器
+        self.bm.addstrategy(BmStrategy)
+        self.bm.addanalyzer(bt.analyzers.TimeReturn, _name = "TR")
+        
             
     # 数据转换
     @run.change_dir
-    def data_transform(self, code):
-        data_df = tools.getStockData(code)
+    def data_transform(self, code, data_df):
+        # print(code, data_df.info())
         data = bt.feeds.PandasData(
             dataname=data_df,
             name=code,
@@ -74,6 +118,23 @@ class BackTest:
         self.totalTrade = self.results[0].analyzers.getbyname("TA").get_analysis()
         # print("测试", self.totalTrade.get_analysis()["total"]["total"])
         # print("回测执行完毕")
+        # 运行基准回测
+        self.bm_results = self.bm.run()
+        self.ret = pd.Series(self.results[0].analyzers.TR.get_analysis())
+        self.bm_ret = pd.Series(self.bm_results[0].analyzers.TR.get_analysis())
+        # 计算风险指标
+        self.__riskAnalyzer()
+        
+        
+    # 计算风险分析
+    def __riskAnalyzer(self):
+        # 计算Alpha
+        self._alpha = ey.alpha(returns = self.ret, factor_returns = self.bm_ret, risk_free = self.rf)
+         # 计算Beta
+        self._beta = ey.beta(returns = self.ret, factor_returns = self.bm_ret, risk_free = self.rf)
+        #  计算信息比率
+        self._info = ey.excess_sharpe(returns = self.ret, factor_returns = self.bm_ret)
+        
         
     # 获取回测结果
     def getResults(self):
@@ -96,6 +157,9 @@ class BackTest:
          "调整索提比例":quantstats.stats.adjusted_sortino(returns = self.returns, rf = self.rf),
           "skew":quantstats.stats.skew(returns = self.returns),
           "calmar":quantstats.stats.calmar(returns = self.returns),
+          "Alpha":self._alpha,
+          "Beta":self._beta,
+          "信息比率":self._info,
           "最大回撤":quantstats.stats.max_drawdown(prices = self.returns)})
         # 获取交易成本
         # self.results[0].analyzers.TA.print()
