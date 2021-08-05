@@ -43,6 +43,7 @@ class BmStrategy(bt.Strategy):
 class BackTest:
     def __init__(self, codes, strategy, benchmark = None, month = 6, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False):
         self.cash = cash
+        self.totalcash = cash
         self.commission = commission
         self.codes = codes
         self.strategy = strategy
@@ -124,7 +125,10 @@ class BackTest:
         self.bm_ret = pd.Series(self.bm_results[0].analyzers.TR.get_analysis())
         # 计算风险指标
         self.__riskAnalyzer()
-        
+        #测试输出
+        #print(self.ret.head(), len(self.ret))
+#        print(self.bm_ret[-len(self.ret):].head(), len(self.bm_ret[-len(self.ret):]))
+
         
     # 计算风险分析
     def __riskAnalyzer(self):
@@ -141,6 +145,7 @@ class BackTest:
         if self.results is None:
             self.__run()
         # print("测试", self.codes[0])
+        cost = abs(self.transactions.value).sum() * self.commission
         results = pd.Series(
         {
          "股票代码":self.codes[0],
@@ -151,7 +156,9 @@ class BackTest:
          "平均收益":quantstats.stats.avg_win(returns = self.returns),
          "平均损失":quantstats.stats.avg_loss(returns = self.returns),
          "年化收益率":quantstats.stats.cagr(returns = self.returns, rf = self.rf),
-         "期末收益率":self.returns[-1],
+         "累积收益":sum(self.ret),
+         "交易成本":cost,
+         "交易成本占投入比例":cost/self.totalcash,
          "夏普比例":quantstats.stats.sharpe(returns = self.returns, rf = self.rf),
          "索提比例":quantstats.stats.sortino(returns = self.returns, rf = self.rf),
          "调整索提比例":quantstats.stats.adjusted_sortino(returns = self.returns, rf = self.rf),

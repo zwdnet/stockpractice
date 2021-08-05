@@ -16,15 +16,17 @@ import os
 from scipy import stats
 
 
+# 回测主函数 refresh是否重新加载数据 
+# retest是否重新回测
 @run.change_dir
-def main(refresh = False):
+def main(refresh = False, retest = False):
     # 先初始化，准备数据
     tools.init()
     codes = tools.Research(refresh = refresh, month = 60, highPrice = 10.0)
     benchmark = tools.getBenchmarkData(month = 60, refresh = refresh)
     # print(benchmark.head())
     datafilepath = "./backtest.csv"
-    if os.path.exists(datafilepath) and refresh == False:
+    if os.path.exists(datafilepath) and retest == False:
         test_res = pd.read_csv(datafilepath, converters = {'股票代码':str})
     else:
         test_res = pd.DataFrame()
@@ -112,7 +114,7 @@ def main2():
 @run.change_dir
 def main3(refresh = False):
     tools.init()
-    code = "002166"
+    code = "002348"
     benchmark = tools.getBenchmarkData(month = 60, refresh = refresh, path = "./stockdata/")
     backtest = BackTest(codes = [code], strategy = st.MAcrossover, benchmark = benchmark, month = 60, refresh = refresh, path = "./stockdata/")
     results = backtest.getResults()
@@ -121,6 +123,6 @@ def main3(refresh = False):
     
     
 if __name__ == "__main__":
-    main(refresh = False)
+    # main(refresh = False, retest = False)
     # main2()
-    # main3(refresh = False)
+    main3(refresh = False)
