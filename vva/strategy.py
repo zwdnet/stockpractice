@@ -1,132 +1,94 @@
 # coding:utf-8
 # 1000元实盘练习程序
-# 测试backtrader，策略文件
-# https://algotrading101.com/learn/backtrader-for-backtesting/
+# 回测锤子线选股策略，策略文件
 
 
 import backtrader as bt
+import talib
+import numpy as np
+import datetime
 
 
-class MyStrategy(bt.Strategy):
-    def next(self):
-        pass
-        
-        
-class PrintClose(bt.Strategy):
-    def __init__(self):
-        self.dataclose = self.datas[0].close
-        
-    def log(self, txt, dt = None):
-        dt = dt or self.datas[0].datetime.date(0)
-        # print(dt, txt)
-        print(f'{dt.isoformat()} {txt} {self.dataclose[0]}')
-        
-    def next(self):
-        self.log("close", self.datas[0].datetime.date(0))
-        
-        
-# 移动均线策略
-class MAcrossover(bt.Strategy):
-    params = (('pfast', 5),
-                       ('pslow', 20),
-                       ('pstock', 10000))
-
-    def log(self, txt, dt = None):
-        dt = dt or self.datas[0].datetime.date(0)
-        # print(dt, txt)
-        # print(f'{dt.isoformat()} {txt} {self.dataclose[0]}')
-        
-        
+class ChuiziStrategy(bt.Strategy):
+    params = (('period', 5),
+                       ('rate', 0.1),
+                       ('stopup', 0.2),
+                       ('stopdown', 0.1))
+    
     def __init__(self):
         self.order = None
-        self.bar_executed = len(self)
-        self.slow_sma = list()
-        self.fast_sma = list()
-        self.crossover = list()
-        self.total = 0
-        for data in self.datas:
-            self.slow_sma.append(bt.indicators.MovingAverageSimple(data, period=self.params.pslow))
-            self.fast_sma.append(bt.indicators.MovingAverageSimple(data, period=self.params.pfast))
-            self.crossover.append(bt.indicators.CrossOver(self.fast_sma[self.total], self.slow_sma[self.total]))
-            self.total += 1
-                        
+        self.orefs = list()
+        self.days = 0
+        self.开盘 = self.datas[0].open
+        self.最高 = self.datas[0].high
+        self.最低 = self.datas[0].low
+        self.收盘 = self.datas[0].close
+        self.成交量 = self.datas[0].volume
+        self.成交量均线 = bt.indicators.MovingAverageSimple(self.成交量, period=self.params.period)
+        # 计算是否为锤子形态
+        self.result = bt.talib.CDLHAMMER(self.开盘, self.最高, self.最低, self.收盘)
+        
+    # 判断是否是买点
+    def judgeBuy(self):
+        # 出现锤子线且放量，买点
+        if self.result[0] != 0 and self.成交量[0] > (1+self.params.rate)*self.成交量均线[0]:
+            return 1
+        return -1
+        
     def notify_order(self, order):
         if order.status in [order.Submitted, order.Accepted]:
             return
-            
         if order.status in [order.Completed]:
-            """
-            if order.isbuy():
-                self.log(f'BUY EXECUTED, {order')
-            elif order.issell():
-                self.log(f'SELL EXECUTED, {order.executed.price:.2f}')
-            """
-            self.bar_executed = len(self)
+            self.order = None
+            # print(self.data.datetime.date(0))
+            # print("买入"*order.isbuy() or "卖出\n")
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            self.log('Order Canceled/Margin/Rejected')
-        self.order = None
+            # print("交易失败!")
+            self.order = None
         
     def next(self):
+        # print(self.datas[0].datetime.date(0), self.result[0], self.成交量均线[0], self.judgeBuy(), self.成交量[0]/self.成交量均线[0])
+        self.days += 1
         if self.order:
             return
             
         if not self.position:
-            # if self.fast_sma[0] > self.slow_sma[0] and self.fast_sma[-1] < self.slow_sma[-1]:
-            for i in range(self.total):
-                if self.crossover[i] > 0:
-                    # self.log(f'BUY CREATE {self.datas[i].close:2f}')
-                    self.order = self.buy(data = self.datas[i])
-            # elif self.fast_sma[0] < self.slow_sma[0] and self.fast_sma[-1] > self.slow_sma[-1]:
-                elif self.crossover[i] < 0:
-                    # self.log(f'SELL CREATE {self.datas[i].close:2f}')
-                    self.order = self.sell(data = self.datas[i])
-        else:
-            if len(self) >= (self.bar_executed + 5):
-                # self.log(f'CLOSE CREATE {self.dataclose[0]:2f}')
-                self.order = self.close()
+            if self.judgeBuy() == 1:
+                p1 = self.datas[0].close
+                p2 = p1*(1+self.params.stopup) # 止盈价
+                p3 = p1*(1-self.params.stopdown) # 止损价
+                buy_ord = self.buy_bracket(limitprice = p2, stopprice = p3, exectype = bt.Order.Market)
+            """
+                self.order = self.buy(data = self.datas[0])
+                self.days = 0
+        elif self.days >= 20:
+            self.order = self.sell(data = self.datas[0])
+            self.days = 0
+
+            """
+            """
+                p1 = self.datas[0].close
+                p2 = p1*(1+0.2) # 止盈20%
+                p3 = p1*(1-0.1) # 止损10%
+                valid = datetime.timedelta(1000)
+                o1 = self.buy(exectype=bt.Order.Market,
+                                  valid = valid,
+                                  price=p1,
+                                  transmit=False)
+                o2 = self.sell(exectype=bt.Order.Stop,
+                                   valid = valid,
+                                   price=p2,
+                                   parent=o1,
+                                   transmit=False)
+                o3 = self.sell(exectype=bt.Order.Stop,
+                                   valid = valid,
+                                   price=p3,
+                                   parent=o1,
+                                   transmit=False)
+                self.ores = [o1.ref, o2.ref, o3.ref]
+                """
                 
     def stop(self):
         self.order = self.close()
-            
-            
-class Screener_SMA(bt.Analyzer):
-    params = (('period',20), ('devfactor',2),)
-    
-    def start(self):
-        self.bband = {data: bt.indicators.BollingerBands(data, period=self.params.period, devfactor=self.params.devfactor) for data in self.datas}
-        
-    def stop(self):
-        self.rets["over"] = list()
-        self.rets["under"] = list()
-        
-        for data, band in self.bband.items():
-            node = data._name, data.close[0], round(band.lines.bot[0], 2)
-            if data > band.lines.bot:
-                self.rets['over'].append(node)
-            else:
-                self.rets['under'].append(node)
-                
-                
-class AverageTrueRange(bt.Strategy):
-    def log(self, txt, dt = None):
-        dt = dt or self.datas[0].datetime.date(0)
-        # print(dt, txt)
-        print(f'{dt.isoformat()} {txt}')
-        
-    def __init__(self):
-        self.dataclose = self.datas[0].close
-        self.datahigh = self.datas[0].high
-        self.datalow = self.datas[0].low
-        
-    def next(self):
-        for data in self.datas:
-            dataclose = data.close
-            datahigh = data.high
-            datalow = data.low
-            range_total = 0
-            for i in range(-13, 1):
-                true_range = datahigh[i] - datalow[i]
-                range_total += true_range
-            ATR = range_total / 14
-            self.log(f'Close: {dataclose[0]:.2f}, ATR: {ATR:.4f}, Code: {data._name}')
+        # print("期末资产金额:", self.broker.getvalue(), "参数:", "成交量均线周期:", self.params.period, "成交量比例:", self.params.rate, "止盈比例:", self.params.stopup, "止损比例:", self.params.stopdown)
         

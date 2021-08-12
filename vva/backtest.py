@@ -41,7 +41,7 @@ class BmStrategy(bt.Strategy):
 
 # 封装BackTrader回测过程的类
 class BackTest:
-    def __init__(self, codes, strategy, benchmark = None, month = 6, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False):
+    def __init__(self, codes, strategy, benchmark = None, month = 6, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False, bOpt = False):
         self.cash = cash
         self.totalcash = cash
         self.commission = commission
@@ -58,6 +58,7 @@ class BackTest:
         self.month = month
         self.path = path
         self.refresh = refresh
+        self.bOpt = bOpt
         self.initBT()
         
     # 初始化BackTrader
@@ -71,7 +72,8 @@ class BackTest:
             data_df = tools.getStockData(code = code, path = self.path, month = self.month, refresh = self.refresh)
             data = self.data_transform(code, data_df)
             self.cerebro.adddata(data, name = code)
-        self.cerebro.addstrategy(self.strategy)
+        if self.bOpt == False:
+            self.cerebro.addstrategy(self.strategy)
         self.cerebro.addanalyzer(bt.analyzers.PyFolio, _name='PyFolio')
         self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name = "TA")
         self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name = "TR")
@@ -88,6 +90,32 @@ class BackTest:
         # 添加策略和分析器
         self.bm.addstrategy(BmStrategy)
         self.bm.addanalyzer(bt.analyzers.TimeReturn, _name = "TR")
+        
+        
+    # 参数优化
+    def optRun(self, *args, **kwargs):
+        if self.bOpt:
+            self.cerebro.optstrategy(self.strategy, *args, **kwargs)
+            runs = self.cerebro.run()
+            finial_results = []
+            params_name = list(runs[0][0].params._getkeys())
+            params_num = len(params_name)
+            # print(params_name)
+            for run in runs:
+                for strategy in run:
+                    returns, positions, transactions, gross_lev = list(strategy.analyzers)[0].get_pf_items()
+                    returns.index = returns.index.tz_convert(None)
+                    ar = quantstats.stats.cagr(returns = returns, rf = self.rf)
+                    params_value = strategy.params._getvalues()
+                    temp = [0]*(params_num+1)
+                    for i in range(params_num):
+                        temp[i] = (params_name[i], params_value[i])
+                    temp[params_num] = ar
+                    finial_results.append(temp)
+            sort_results = sorted(finial_results, key=lambda x: x[params_num], reverse=True)
+            # print("测试:", sort_results[:5])
+            return sort_results
+        return 0
         
             
     # 数据转换
@@ -156,7 +184,7 @@ class BackTest:
          "平均收益":quantstats.stats.avg_win(returns = self.returns),
          "平均损失":quantstats.stats.avg_loss(returns = self.returns),
          "年化收益率":quantstats.stats.cagr(returns = self.returns, rf = self.rf),
-         "累积收益":sum(self.ret),
+         "累积收益":((1+self.ret).cumprod() - 1)[-1],
          "交易成本":cost,
          "交易成本占投入比例":cost/self.totalcash,
          "夏普比例":quantstats.stats.sharpe(returns = self.returns, rf = self.rf),

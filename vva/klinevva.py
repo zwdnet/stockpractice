@@ -28,7 +28,7 @@ def judge(value, mean, rate = 0.1):
 
 
 # 在数据中增加成交量的均线，并判断量能
-def addMA(data, period = 10, rate = 0.1):
+def addMA(data, period = 5, rate = 0.1):
     data["成交量均线"] = pd.Series.rolling(data.成交量, window = period).mean()
     # 成交量大于均值的110%为放量，值为1，低于均值的90%为缩量，值为-1，否则为平量，值为0
     data["量能"] = data.apply(lambda x: judge(x.成交量, x.成交量均线, rate=rate), axis = 1)
@@ -43,7 +43,7 @@ def test(codes, method, month):
     date = []
     for code in codes:
         data = tools.getStockData(code=code, month = month)
-        data = addMA(data, rate = 0.3)
+        data = addMA(data, rate = 0.2)
         # data = data.iloc[-5:, :]
         # print(code, data.tail())
         result = method(data.开盘.values, data.最高.values, data.最低.values, data.收盘.values)
