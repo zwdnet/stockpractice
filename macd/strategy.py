@@ -133,3 +133,38 @@ class CYBStrategy(bt.Strategy):
             
     def stop(self):
         self.order = self.close()
+        
+        
+# 均线策略
+class MA(bt.Strategy):
+    params = (('period', 30),)
+    
+    def __init__(self):
+        self.order = None
+        self.收盘 = self.datas[0].close
+        self.ma = bt.indicators.MovingAverageSimple(self.收盘, period=self.params.period)
+        
+    def next(self):
+        if self.order:
+            return
+        
+        if not self.position:
+            if self.收盘[0] > self.ma[0]:
+                self.order = self.buy(data = self.datas[0])
+        else:
+            if self.收盘[0] < self.ma[0]:
+                self.order = self.sell(data = self.datas[0])
+    
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            self.order = None
+            # print(self.data.datetime.date(0))
+            # print("买入"*order.isbuy() or "卖出\n")
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            print("交易失败!", order.status)
+            self.order = None
+            
+    def stop(self):
+        self.order = self.close()

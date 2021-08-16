@@ -131,12 +131,12 @@ def getStockData(code, path = "./pooldata/", month = 6, refresh = False):
     
 # 获取基准数据，默认为沪深300ETF
 @run.change_dir
-def getBenchmarkData(code = "sh510300", path = "./", month = 6, refresh = False):
+def getBenchmarkData(code = "000300", path = "./", month = 6, refresh = False):
     filename = path + "bench.csv"
     if os.path.exists(filename) and refresh == False:
         data = pd.read_csv(filename)
-        data.date = pd.to_datetime(data.date)
-        data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
+        data.日期 = pd.to_datetime(data.日期)
+        # data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
         return data
     else:
         today = datetime.date.today().strftime("%Y%m%d")
@@ -144,14 +144,15 @@ def getBenchmarkData(code = "sh510300", path = "./", month = 6, refresh = False)
         months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
         # print("测试基准", code, type(code))
         # benchmark_data = ak.stock_zh_a_hist(symbol = code, start_date = months, end_date = today, adjust = "qfq")
-        benchmark_data = ak.stock_zh_index_daily(symbol = code)
+        benchmark_data = getStockData(code, path = "./", month = month, refresh = refresh)# ak.stock_zh_index_daily(symbol = code)
         # benchmark_data.columns = ["开盘", "最高", "最低", "收盘", "成交量"]
         # benchmark_data.rename(index = {"date":"日期"})
+        data.日期 = pd.to_datetime(data.日期)
         benchmark_data.to_csv(filename)
-        data = pd.read_csv(filename)
-        data.date = pd.to_datetime(data.date)
-        data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
-        return data
+        # data = pd.read_csv(filename)
+        # data.date = pd.to_datetime(data.date)
+        # data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
+        return benchmark_data
     
     
 # 打包整个下载数据，选股过程
