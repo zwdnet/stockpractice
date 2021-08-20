@@ -71,7 +71,7 @@ def make_stock_pool(data, highPrice = 5.0):
     
 # 获取股票池近month个月的日线数据
 @run.change_dir
-def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 6):
+def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, start_date = "19000101", end_date = "21000101"):
     # data = pd.read_csv(path, converters = {'代码':str}).代码.values
     new_codes = []
     discard_code = []
@@ -79,9 +79,13 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 6):
     # 获取股票最近month个月数据
     if refresh == True:
         os.system("rm ./pooldata/*")
-        today = datetime.date.today().strftime("%Y%m%d")
-        # print("今天日期:", today)
-        months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
+        if month > 0:
+            end = datetime.date.today().strftime("%Y%m%d")
+            # print("今天日期:", today)
+            start = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
+        else:
+            end = end_date
+            start = start_date
         # print("上月日期:", lastmonth)
         k = 0.0
         n = len(codes)
@@ -90,7 +94,7 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 6):
             print("已下载了", str(k/n*100), "%股票数据\n")
             code = i
             # print(code)
-            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = months, end_date = today, adjust = "qfq")
+            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = start, end_date = end, adjust = "qfq")
             # 排除上市不足两个月的股票。
             # print("测试", len(stock_data))
             if len(stock_data) < 60:
@@ -107,61 +111,61 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 6):
     
 # 获取指定代码股票历史数据
 @run.change_dir
-def getStockData(code, path = "./pooldata/", month = 6, refresh = False):
+def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_date = "19000101", end_date = "21000101"):
     filename = path + code + ".csv"
-    print(filename)
+    # print(filename)
     if os.path.exists(filename) and refresh == False:
         data = pd.read_csv(filename)
         data.日期 = pd.to_datetime(data.日期)
         return data
     else:
-        today = datetime.date.today().strftime("%Y%m%d")
-        # print("今天日期:", today)
-        months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
+        os.system("rm " + filename)
+        if month > 0:
+            end = datetime.date.today().strftime("%Y%m%d")
+            # print("今天日期:", today)
+            start = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
+        else:
+            end = end_date
+            start = start_date
         stock_data = None
         try:
-            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = months, end_date = today, adjust = "qfq")
+            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = start, end_date = end, adjust = "hfq")
         except:
             # print("获取股价数据发生异常")
-            stock_data = ef.stock.get_quote_history(code)
+            stock_data = ef.stock.get_quote_history(code, beg = start, end = end, fqt = 2)
         stock_data.日期 = pd.to_datetime(stock_data.日期)
         stock_data.to_csv(filename, index = False)
         return stock_data
     
     
-# 获取基准数据，默认为沪深300ETF
+# 获取基准数据，默认为沪深300指数
 @run.change_dir
-def getBenchmarkData(code = "000300", path = "./", month = 6, refresh = False):
+def getBenchmarkData(code = "000300", path = "./", month = 0, refresh = False, start_date = "19000101", end_date = "21000101"):
     filename = path + "bench.csv"
     if os.path.exists(filename) and refresh == False:
         data = pd.read_csv(filename)
         data.日期 = pd.to_datetime(data.日期)
-        # data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
         return data
     else:
-        today = datetime.date.today().strftime("%Y%m%d")
-        # print("今天日期:", today)
-        months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
-        # print("测试基准", code, type(code))
-        # benchmark_data = ak.stock_zh_a_hist(symbol = code, start_date = months, end_date = today, adjust = "qfq")
-        benchmark_data = getStockData(code, path = "./", month = month, refresh = refresh)# ak.stock_zh_index_daily(symbol = code)
-        # benchmark_data.columns = ["开盘", "最高", "最低", "收盘", "成交量"]
-        # benchmark_data.rename(index = {"date":"日期"})
-        data.日期 = pd.to_datetime(data.日期)
+        os.system("rm " + filename)
+        benchmark_data = getStockData(code, path = path, month = month, refresh = refresh, start_date = start_date, end_date = end_date)
+        benchmark_data.日期 = pd.to_datetime(benchmark_data.日期)
+        # 将每列数据除以其最小值，这样用指数做基准不会太大
+        n = len(benchmark_data.columns)
+        num_cols = ["开盘", "收盘", "最高", "最低", "成交量", "成交额"]
+        temp = benchmark_data.loc[:, num_cols]/benchmark_data.loc[:, num_cols].min()
+        benchmark_data.loc[:, num_cols] = temp
         benchmark_data.to_csv(filename)
-        # data = pd.read_csv(filename)
-        # data.date = pd.to_datetime(data.date)
-        # data.columns = ["日期", "开盘", "最高", "最低", "收盘", "成交量"]
         return benchmark_data
     
     
 # 打包整个下载数据，选股过程
 @run.change_dir
-def Research(refresh = True, month = 6, highPrice = 5.0):
+def Research(refresh = True, month = 0, highPrice = 5.0, start_date = "19000101", end_date = "21000101"):
     data = getData(refresh = refresh)
     pool_codes = make_stock_pool(data, highPrice)
-    codes = getRecentData(codes = pool_codes, refresh = refresh, month = month)
-    getBenchmarkData(month = month, refresh = refresh)
+    codes = getRecentData(codes = pool_codes, refresh = refresh, month = month, start_date = start_date, end_date = end_date)
+    getBenchmarkData(month = month, refresh = refresh, start_date = start_date, end_date = end_date)
     return codes
     
     

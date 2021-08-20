@@ -8,6 +8,8 @@ import talib
 import numpy as np
 import pandas as pd
 import datetime
+import matplotlib.pyplot as plt
+import run
 
 
 class ChuiziStrategy(bt.Strategy):
@@ -165,6 +167,112 @@ class MA(bt.Strategy):
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
             print("交易失败!", order.status)
             self.order = None
+            
+    def stop(self):
+        self.order = self.close()
+        
+        
+# 三重动量择时策略
+class ThreeMovement(bt.Strategy):
+    params = (("ma1", 5),
+              ("ma2", 15),
+              ("ma3", 25),
+              ("rate", 0.04))
+              
+    def __init__(self):
+        self.order = None
+        self.close = self.datas[0].close
+        self.price = []
+        self.indicators = []
+        self.rateline = []
+        self.i = 0
+        
+    def next(self):
+        if self.order:
+            return
+        # 计算指标
+        self.ma1 = (self.close[0] - self.close[-self.params.ma1])/self.close[-self.params.ma1]
+        self.ma2 = (self.close[0] - self.close[-self.params.ma2])/self.close[-self.params.ma2]
+        self.ma3 = (self.close[0] - self.close[-self.params.ma3])/self.close[-self.params.ma3]
+        indicator = self.ma1 + self.ma2 + self.ma3
+        self.price.append(self.close[0])
+        scale = 3000
+        baseline = self.params.rate*scale
+        self.indicators.append(indicator*scale)
+        self.rateline.append(baseline)
+        # 计算信号
+        if self.i < self.params.ma3:
+            self.i += 1
+            return
+        signal = 0
+        # 由下向上突破基准，买入
+        if self.indicators[-2] <= baseline and self.indicators[-1] > baseline:
+            signal = 1
+        # 由上向下突破基准，卖出
+        elif self.indicators[-2] > baseline and self.indicators[-1] <= baseline:
+            signal = 2
+            
+        # 根据持仓情况决策
+        if not self.position and signal == 1:
+            self.order = self.buy(data = self.datas[0])
+        if self.position and signal == 2:
+            self.order = self.sell(data = self.datas[0])
+            
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            self.order = None
+            # print(self.data.datetime.date(0))
+            # print("买入"*order.isbuy() or "卖出\n")
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            print("交易失败!", order.status)
+            self.order = None
+        
+    @run.change_dir    
+    def stop(self):
+        self.order = self.close()
+        plt.plot(self.price, label = "股价")
+        plt.plot(self.indicators, label = "指标")
+        plt.plot(self.rateline, label = "基线")
+        plt.legend(loc = "best")
+        plt.savefig("./output/var.jpg")
+        
+        
+# 测试backtrader框架用的策略        
+class TestBT(bt.Strategy):
+    def __init__(self):
+        self.order = None
+        self.close = self.datas[0].close
+        
+    def start(self):
+        self.order = self.buy(data = self.datas[0])
+        
+    def next(self):
+        if self.order:
+            return
+            
+        if not self.position:
+            self.order = self.buy()
+            
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            self.order = None
+            # print(self.data.datetime.date(0))
+            # print("买入"*order.isbuy() or "卖出\n")
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            print("交易失败!", order.status)
+            self.order = None
+            
+    def notify_fund(self, cash, value, fundvalue, shares):
+        # print("策略测试进行中, ",cash, value, fundvalue, shares, self.close[0])
+        pass
+        
+    def notify_order(self, order):
+        # print("交易信息", order.executed.size, order.executed.price)
+        pass
             
     def stop(self):
         self.order = self.close()

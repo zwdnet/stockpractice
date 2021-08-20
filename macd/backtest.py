@@ -5,7 +5,6 @@
 
 import pandas as pd
 import backtrader as bt
-import empyrical as ey
 import run
 import tools
 import strategy as st
@@ -16,6 +15,7 @@ import imgkit
 import os
 from PIL import Image
 import math
+import pyfolio as pf
 
 
 # 基准测试类   
@@ -23,17 +23,39 @@ import math
 class BmStrategy(bt.Strategy):
     def __init__(self):
         self.order = None
-        self.bBuy = False
+        # self.bBuy = False
         self.dataclose = self.datas[0].close
+        self.cheat_on_open = False
+        
+    def start(self):
+        if self.cheat_on_open:
+            self.order = self.buy(data = self.datas[0])
  
     def next(self):
-        if self.bBuy == True:
+        if self.order:
             return
-        else:
+        if not self.position:
             cash = self.broker.get_cash()
-            stock = math.ceil(cash/self.dataclose/100)*100 - 100
+            stock = math.ceil(cash/self.dataclose[0]/100)*100 - 100
+            #print("回测基准策略", stock, cash, self.dataclose[0], stock*self.dataclose[0])
             self.order = self.buy(size = stock, price = self.datas[0].close)
-            self.bBuy = True
+                
+            # self.bBuy = True
+            
+    def notify_order(self, order):
+        if order.status in [order.Submitted, order.Accepted]:
+            return
+        if order.status in [order.Completed]:
+            self.order = None
+            #print(self.data.datetime.date(0))
+            #print("买入"*order.isbuy() or "卖出\n")
+        elif order.status in [order.Canceled, order.Margin, order.Rejected]:
+            print("交易失败!", order.status)
+            self.order = None
+            
+    def notify_fund(self, cash, value, fundvalue, shares):
+        # print("基准测试进行中, ",cash, value, fundvalue, shares)
+        pass
  
     def stop(self):
         self.order = self.close()
@@ -41,7 +63,7 @@ class BmStrategy(bt.Strategy):
 
 # 封装BackTrader回测过程的类
 class BackTest:
-    def __init__(self, codes, strategy, benchmark = None, month = 6, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False, bOpt = False):
+    def __init__(self, codes, strategy, benchmark = None, month = 0, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False, bOpt = False, bData = False, data = None, cheat_on_open = False, start_date = "19000101", end_date = "21000101", days = 242):
         self.cash = cash
         self.totalcash = cash
         self.commission = commission
@@ -59,17 +81,27 @@ class BackTest:
         self.path = path
         self.refresh = refresh
         self.bOpt = bOpt
+        self.bData = bData
+        self.data = data
+        self.cheat_on_open = cheat_on_open
+        self.start = start_date
+        self.end = end_date
+        self.days = days
         self.initBT()
         
     # 初始化BackTrader
     def initBT(self):
-        self.cerebro = bt.Cerebro()
+        self.cerebro = bt.Cerebro(cheat_on_open = self.cheat_on_open)
         self.cerebro.broker.setcash(self.cash)
         self.cerebro.broker.setcommission(self.commission)
         self.cerebro.addsizer(bt.sizers.SizerFix, stake = self.stake)
         # 准备数据
         for code in self.codes:
-            data_df = tools.getStockData(code = code, path = self.path, month = self.month, refresh = self.refresh)
+            if self.bData == True and self.data is not None:
+                data_df = self.data
+            else:
+                data_df = tools.getStockData(code = code, path = self.path, month = self.month, refresh = self.refresh, start_date = self.start, end_date = self.end)
+            # print("测试输出", data_df.info())
             data = self.data_transform(code, data_df)
             self.cerebro.adddata(data, name = code)
         if self.bOpt == False:
@@ -77,14 +109,15 @@ class BackTest:
         self.cerebro.addanalyzer(bt.analyzers.PyFolio, _name='PyFolio')
         self.cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name = "TA")
         self.cerebro.addanalyzer(bt.analyzers.TimeReturn, _name = "TR")
-        
+        self.cerebro.addanalyzer(bt.analyzers.SQN, _name = "SQN")
+        self.cerebro.addanalyzer(bt.analyzers.Returns, _name = "Returns", tann = self.days)
         # 初始化基准数据
-        self.bm = bt.Cerebro()
+        self.bm = bt.Cerebro(cheat_on_open = self.cheat_on_open)
         self.bm.broker.setcash(self.cash)
         self.bm.broker.setcommission(self.commission)
         self.bm.addsizer(bt.sizers.SizerFix, stake = self.stake)
         # 准备数据
-        # print(self.benchmark.info())
+        # print("基准数据", self.benchmark.info())
         data = self.data_transform("BenchMark", self.benchmark)
         self.bm.adddata(data, name = "BenchMark")
         # 添加策略和分析器
@@ -145,27 +178,40 @@ class BackTest:
         self.returns, self.positions, self.transactions, self.gross_lev = portfolio_stats.get_pf_items()
         self.returns.index = self.returns.index.tz_convert(None)
         self.totalTrade = self.results[0].analyzers.getbyname("TA").get_analysis()
+        self._SQN = self.results[0].analyzers.SQN.get_analysis()["sqn"]
+        self._Returns = self.results[0].analyzers.Returns.get_analysis()
+        
         # print("测试", self.totalTrade.get_analysis()["total"]["total"])
         # print("回测执行完毕")
         # 运行基准回测
         self.bm_results = self.bm.run()
         self.ret = pd.Series(self.results[0].analyzers.TR.get_analysis())
         self.bm_ret = pd.Series(self.bm_results[0].analyzers.TR.get_analysis())
+        # 累积收益
+        self._cumRet = ((1+self.ret).cumprod() - 1)[-1]
         # 计算风险指标
         self.__riskAnalyzer()
-        #测试输出
-        #print(self.ret.head(), len(self.ret))
-#        print(self.bm_ret[-len(self.ret):].head(), len(self.bm_ret[-len(self.ret):]))
+        # print("策略收益序列:", self.returns)
+        # print("分析器返回收益策略:", self.ret)
 
         
     # 计算风险分析
     def __riskAnalyzer(self):
-        # 计算Alpha
-        self._alpha = ey.alpha(returns = self.ret, factor_returns = self.bm_ret, risk_free = self.rf)
-         # 计算Beta
-        self._beta = ey.beta(returns = self.ret, factor_returns = self.bm_ret, risk_free = self.rf)
-        #  计算信息比率
-        self._info = ey.excess_sharpe(returns = self.ret, factor_returns = self.bm_ret)
+        print("测试", self.ret.head(), self.bm_ret.head())
+        # 计算夏普比率
+        self._sharpe = quantstats.stats.sharpe(returns = self.ret, rf = self.rf, periods = self.days, annualize = True, trading_year_days = self.days)
+        # 计算αβ值
+        self._alphabeta = quantstats.stats.greeks(self.ret, self.bm_ret, periods = self.days)
+        # 计算信息比率
+        self._info = quantstats.stats.information_ratio(self.ret, self.bm_ret)
+        # 索提比率
+        self._sortino = quantstats.stats.sortino(returns = self.ret, rf = self.rf, periods = self.days, annualize = True, trading_year_days = self.days)
+        # 调整索提比率
+        self._adjustSt = quantstats.stats.adjusted_sortino(returns = self.ret, rf = self.rf, periods = self.days, annualize = True, trading_year_days = self.days)
+        # skew值
+        self._skew = quantstats.stats.skew(returns = self.ret)
+        # calmar值
+        self._calmar = quantstats.stats.calmar(returns = self.ret)
         
         
     # 获取回测结果
@@ -178,47 +224,48 @@ class BackTest:
         {
          "股票代码":self.codes[0],
          "交易次数":self.totalTrade["total"]["total"],
-         "胜率":quantstats.stats.win_rate(returns = self.returns),
-         "胜负比率":quantstats.stats.profit_ratio(returns = self.returns),
-         "赢率":quantstats.stats.win_loss_ratio(returns = self.returns),
-         "平均收益":quantstats.stats.avg_win(returns = self.returns),
-         "平均损失":quantstats.stats.avg_loss(returns = self.returns),
-         "年化收益率":quantstats.stats.cagr(returns = self.returns, rf = self.rf),
-         "累积收益":((1+self.ret).cumprod() - 1)[-1],
+         "胜率": quantstats.stats.win_rate(returns = self.returns),
+         "盈亏率比": quantstats.stats.profit_ratio(returns = self.ret),
+         "盈亏比": quantstats.stats.win_loss_ratio(returns = self.ret),
+         "盈亏次数比": quantstats.stats.profit_factor(returns = self.ret),
+         "平均收益": quantstats.stats.avg_win(returns = self.returns),
+         "平均损失": quantstats.stats.avg_loss(returns = self.returns),
+         "年化收益率": self._Returns["rnorm"], 
+         "累积收益":self._cumRet,
+         "收益标准差": self.ret.std(),
          "交易成本":cost,
-         "交易成本占投入比例":cost/self.totalcash,
-         "夏普比例":quantstats.stats.sharpe(returns = self.returns, rf = self.rf),
-         "索提比例":quantstats.stats.sortino(returns = self.returns, rf = self.rf),
-         "调整索提比例":quantstats.stats.adjusted_sortino(returns = self.returns, rf = self.rf),
-          "skew":quantstats.stats.skew(returns = self.returns),
-          "calmar":quantstats.stats.calmar(returns = self.returns),
-          "Alpha":self._alpha,
-          "Beta":self._beta,
-          "信息比率":self._info,
-          "最大回撤":quantstats.stats.max_drawdown(prices = self.returns)})
-        # 获取交易成本
-        # self.results[0].analyzers.TA.print()
+         "收益占交易成本的比例":self.totalcash/self._cumRet/cost,
+         "夏普比例":self._sharpe,
+         "索提比例":self._sortino,
+         "调整索提比例":self._adjustSt,
+         "skew":self._skew,
+         "calmar":self._calmar,
+         "Alpha":self._alphabeta.alpha,
+         "Beta":self._alphabeta.beta,
+         "信息比率":self._info,
+         "SQN":self._SQN,
+         "最大回撤": quantstats.stats.max_drawdown(prices = self.returns)})
         results.name = self.codes[0]
-        # results.index.name = "股票代码"
         return results
         
     # 制作回测报告
     @run.change_dir
-    def __drawReport(self, filename = "backtestStat.png", bDraw = False):
+    def __drawReport(self, filename = "backtestStat.jpg", bDraw = False):
         if self.results is None:
             self.__run()
         
         if bDraw:
-            quantstats.reports.html(self.returns, output='./output/stats.html', title='SMA Sentiment', rf = self.rf)
+            quantstats.reports.html(self.returns, benchmark = self.bm_ret, rf = self.rf, output='./output/stats.html', title='BackTest Results', trading_year_days = self.days)
             imgkit.from_file("./output/stats.html", "./output/" + filename, options = {"xvfb": ""})
             # 压缩图片文件
             im = Image.open("./output/" + filename)
-            im.save("./output/" + filename, quality=0.05)
+            im.save("./output/" + filename)
+            # im.save("./output/" + filename, quality=0.05)
             os.system("rm ./output/stats.html")
         
     # 作图画出回测结果
     @run.change_dir
-    def drawResults(self, filename = "backtestRes.png"):
+    def drawResults(self, filename = "backtestRes.jpg"):
         if self.results is None:
             self.__run()
         self.cerebro.plot()

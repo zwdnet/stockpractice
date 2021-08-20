@@ -23,12 +23,12 @@ def backTest(refresh = False):
     month = 15*12
     code = "000300" # 沪深300指数
     benchmark = tools.getBenchmarkData(month = month,  refresh = refresh, path = "./stockdata/")
-    backtest = BackTest(codes = [code], strategy = st.MA, benchmark = benchmark, month = month, cash = 1000000, refresh = refresh, path = "./stockdata/", bOpt = True)
-    # results = backtest.getResults()
-    # print(results)
-    # backtest.drawResults(code + "result")
-    res = backtest.optRun(period = range(5,200))
-    print("测试c", res)
+    backtest = BackTest(codes = [code], strategy = st.MA, benchmark = benchmark, month = month, cash = 1000000, refresh = refresh, path = "./stockdata/", bOpt = False)
+    results = backtest.getResults()
+    print(results)
+    backtest.drawResults(code + "result")
+    # res = backtest.optRun(period = range(5,200))
+    # print("测试c", res)
     
     
 
