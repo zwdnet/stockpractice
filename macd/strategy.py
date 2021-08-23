@@ -263,7 +263,13 @@ class TestBT(bt.Strategy):
             # print(self.data.datetime.date(0))
             # print("买入"*order.isbuy() or "卖出\n")
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            print("交易失败!", order.status)
+            print("策略交易失败!")
+            if order.ststus == order.Canceled:
+                print("交易被取消\n")
+            elif order.status == order.Margin:
+                print("现金不足\n")
+            else:
+                print("交易被拒绝\n")
             self.order = None
             
     def notify_fund(self, cash, value, fundvalue, shares):

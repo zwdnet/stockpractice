@@ -36,9 +36,9 @@ class BmStrategy(bt.Strategy):
             return
         if not self.position:
             cash = self.broker.get_cash()
-            stock = math.ceil(cash/self.dataclose[0]/100)*100 - 100
-            #print("回测基准策略", stock, cash, self.dataclose[0], stock*self.dataclose[0])
-            self.order = self.buy(size = stock, price = self.datas[0].close)
+            stock = math.ceil((cash/self.dataclose[0] - 100)/100)*100
+            # print("回测基准策略", stock, cash, self.dataclose[0], stock*self.dataclose[0])
+            self.order = self.buy(size = stock, price = self.datas[0].close) 
                 
             # self.bBuy = True
             
@@ -50,7 +50,18 @@ class BmStrategy(bt.Strategy):
             #print(self.data.datetime.date(0))
             #print("买入"*order.isbuy() or "卖出\n")
         elif order.status in [order.Canceled, order.Margin, order.Rejected]:
-            print("交易失败!", order.status)
+            if order.status == order.Canceled:
+                print("交易被取消\n")
+            elif order.status == order.Margin:
+                # 现金不足，重新计算购入数量
+                cash = self.broker.get_cash()
+                stock = math.ceil((cash/self.dataclose[0] - 100)/100)*100*0.90
+                self.order = self.buy(size = stock, price = self.datas[0].close)
+                # print("现金不足，新购入数量为:", stock)
+                return
+            else:
+                print("交易被拒绝\n")
+            
             self.order = None
             
     def notify_fund(self, cash, value, fundvalue, shares):
@@ -64,29 +75,29 @@ class BmStrategy(bt.Strategy):
 # 封装BackTrader回测过程的类
 class BackTest:
     def __init__(self, codes, strategy, benchmark = None, month = 0, path = "./pooldata/", cash = 1000, commission = 0.0006, stake = 100, riskfree = 0.0, refresh = False, bOpt = False, bData = False, data = None, cheat_on_open = False, start_date = "19000101", end_date = "21000101", days = 242):
-        self.cash = cash
-        self.totalcash = cash
-        self.commission = commission
-        self.codes = codes
-        self.strategy = strategy
-        self.stake = stake
-        self.cerebro = None
-        self.results = None
-        self.bm_results = None
-        self.totalTrade = None
+        self.cash = cash # 资金量
+        self.totalcash = cash  # 总现金
+        self.commission = commission # 手续费比率
+        self.codes = codes  # 股票或指数代码
+        self.strategy = strategy # 策略
+        self.stake = stake # 交易规模
+        self.cerebro = None  # 回测类
+        self.results = None  # 回测结果
+        self.bm_results = None # 基准回测结果
+        self.totalTrade = None # 交易次数
         self.bm = None  # 基准类
-        self.benchmark = benchmark
-        self.rf = riskfree
-        self.month = month
-        self.path = path
-        self.refresh = refresh
-        self.bOpt = bOpt
-        self.bData = bData
-        self.data = data
-        self.cheat_on_open = cheat_on_open
-        self.start = start_date
-        self.end = end_date
-        self.days = days
+        self.benchmark = benchmark # 基准数据，由调用者提供
+        self.rf = riskfree # 无风险收益率
+        self.month = month # 回测月数，如为0则需定义起始日期
+        self.path = path # 数据文件保存路径
+        self.refresh = refresh # 是否下载更新数据
+        self.bOpt = bOpt # 是否进行参数优化
+        self.bData = bData # 是否由调用者直接提供数据
+        self.data = data # 调用者提供的数据
+        self.cheat_on_open = cheat_on_open # 是否开启开盘即买入作弊模式
+        self.start = start_date # 回测开始日期
+        self.end = end_date # 回测结束日期
+        self.days = days # 每年的交易天数，用于计算回测指标，按中国股市默认为242天/年
         self.initBT()
         
     # 初始化BackTrader
@@ -197,9 +208,12 @@ class BackTest:
         
     # 计算风险分析
     def __riskAnalyzer(self):
-        print("测试", self.ret.head(), self.bm_ret.head())
+        # print("测试", self.ret.head(), self.bm_ret)
         # 计算夏普比率
-        self._sharpe = quantstats.stats.sharpe(returns = self.ret, rf = self.rf, periods = self.days, annualize = True, trading_year_days = self.days)
+        if self.ret.std() == 0.0:
+            self._sharpe = 0.0
+        else:
+            self._sharpe = quantstats.stats.sharpe(returns = self.ret, rf = self.rf, periods = self.days, annualize = True, trading_year_days = self.days)
         # 计算αβ值
         self._alphabeta = quantstats.stats.greeks(self.ret, self.bm_ret, periods = self.days)
         # 计算信息比率

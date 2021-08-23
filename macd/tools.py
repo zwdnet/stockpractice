@@ -44,9 +44,12 @@ def getData(refresh = True):
     
 # 形成股票池
 @run.change_dir
-def make_stock_pool(data, highPrice = 5.0):
-    # 股价低于highPrice的
-    smallData = data[data.最高 < highPrice]
+def make_stock_pool(data, highPrice = 5.0, bSelect = True):
+    if bSelect:
+        # 股价低于highPrice的
+        smallData = data[data.最高 < highPrice]
+    else:
+        smallData = data
     # 排除ST个股
     # print("排除前", len(smallData))
     smallData = smallData[~ smallData.名称.str.contains("ST")]
@@ -115,11 +118,13 @@ def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_d
     filename = path + code + ".csv"
     # print(filename)
     if os.path.exists(filename) and refresh == False:
+        # print("测试a")
         data = pd.read_csv(filename)
         data.日期 = pd.to_datetime(data.日期)
         return data
     else:
-        os.system("rm " + filename)
+        # print("测试b")
+        # os.system("rm " + filename)
         if month > 0:
             end = datetime.date.today().strftime("%Y%m%d")
             # print("今天日期:", today)
@@ -159,11 +164,11 @@ def getBenchmarkData(code = "000300", path = "./", month = 0, refresh = False, s
         return benchmark_data
     
     
-# 打包整个下载数据，选股过程
+# 打包整个下载数据，选股过程，bSelect为True进行价格筛选
 @run.change_dir
-def Research(refresh = True, month = 0, highPrice = 5.0, start_date = "19000101", end_date = "21000101"):
+def Research(refresh = True, month = 0, highPrice = 5.0, start_date = "19000101", end_date = "21000101", bSelect = True):
     data = getData(refresh = refresh)
-    pool_codes = make_stock_pool(data, highPrice)
+    pool_codes = make_stock_pool(data, highPrice, bSelect)
     codes = getRecentData(codes = pool_codes, refresh = refresh, month = month, start_date = start_date, end_date = end_date)
     getBenchmarkData(month = month, refresh = refresh, start_date = start_date, end_date = end_date)
     return codes
