@@ -198,9 +198,99 @@ def marketTest(refresh = False, retest = False):
     plt.close()
         
 
+# 找顶底背离
+# 参考https://blog.csdn.net/qq_40420929/article/details/103923767
+@run.change_dir
+def beili(code, refresh = False, month = 3):
+    data = tools.getStockData(code, month = month, refresh = refresh)
+    dif, dea, hist = talib.MACD(data.收盘.values)
+    # 计算均线
+    ma5 = data.收盘.rolling(5).mean().shift(-1).values
+    ma10 = data.收盘.rolling(10).mean().shift(-1).values
+    ma20 = data.收盘.rolling(20).mean().shift(-1).values
+    # print(dif, dea, hist)
+    nanNum = 33
+    df_data = pd.DataFrame({"收盘":data.收盘[nanNum:].values, "dif":dif[nanNum:], "dea":dea[nanNum:], "hist":hist[nanNum:], "ma5":ma5[nanNum:], "ma10":ma10[nanNum:], "ma20":ma20[nanNum:]}, index = data.日期[nanNum:])
+    # 找各均线的拐点
+    datenum = int(df_data.shape[0])
+    g5 = None
+    g10 = None
+    g20 = None
+    for i in range(datenum - 1, 1, -1):
+        if g5 is None and df_data.ma5[i-1] < df_data.ma5[i] and df_data.ma5[i-1] < df_data.ma5[i-2]:
+            g5 = i
+        if g10 is None and df_data.ma10[i-1] < df_data.ma10[i] and df_data.ma10[i-1] < df_data.ma10[i-2]:
+            g10 = i
+        if g20 is None and df_data.ma20[i-1] < df_data.ma20[i] and df_data.ma20[i-1] < df_data.ma20[i-2]:
+            g20 = i
+    # print(g5, g10, g20)
+    res = None
+    # 寻找MACD的金叉和死叉
+    
+    lastdif = None
+    lastclose = None
+    lastdate = None
+    # print(df_data.info())
+    for i in range(datenum - 1):
+        # 顶背离，暂时用不到
+        if (df_data.iloc[i, 2] <= df_data.iloc[i, 3]) and (df_data.iloc[i+1, 2] >= df_data.iloc[i, 3]) and greaterThan(lastdif, df_data.iloc[i+1, 2]) and greaterThan(df_data.iloc[i+1, 1], lastclose):
+           lastdif = df_data.dif[i]
+           lastclose = df_data.收盘[i]
+           lastdate = df_data.index[i+1].date()
+        # 底背离
+        if (df_data.iloc[i, 2] >= df_data.iloc[i, 3]) and (df_data.iloc[i+1, 2] <= df_data.iloc[i, 3]) and  greaterThan(df_data.iloc[i+1, 2], lastdif) and greaterThan(lastclose, df_data.iloc[i+1, 1]) and bUp(g5, g10, g20, i):
+            if lastdate is not None:
+                res = [lastdate, df_data.index[i+1].date()]
+            lastdif = df_data.dif[i]
+            lastclose = df_data.收盘[i]
+            lastdate = df_data.index[i+1].date()
+    return res
+        
+
+def greaterThan(a, b):
+    if (not a) | (not b):
+        return True
+    elif a > b:
+        return True
+    else:
+        return False
+        
+
+# 判断均线下拐点是否在i之后        
+def bUp(g5, g10, g20, i):
+    if g5 == None or g10 == None or g20 == None:
+        # print("测试，到这里")
+        return False
+    if g5 >= i and g10 >= i and g20 >= i:
+        return True
+    else:
+        return False
+        
+# 用底背离选股
+@run.change_dir
+def beiliSelect(refresh = False):
+    month = 3 # 用最近三个月的数据进行研究
+    codes = tools.Research(refresh = refresh, month = month, highPrice = 10.0)
+    n = len(codes)
+    i = 0
+    results = pd.DataFrame(columns = ["股票代码", "底背离开始时间", "底背离结束时间"])
+    for code in codes:
+        i += 1.0
+        print("研究进度:", i/n*100, "%")
+        res = beili(code, refresh = False, month = month)
+        if res is not None:
+            results = results.append({"股票代码":code, "底背离开始时间":res[0], "底背离结束时间":res[1]}, ignore_index = True)
+    results = results.sort_values(by = "底背离结束时间")
+    print(results)
+        
+
 
 if __name__ == "__main__":
     tools.init()
     # main(refresh = False)
     # backTest(refresh = True)
-    marketTest(refresh = False, retest = False)
+    # marketTest(refresh = False, retest = False)
+    # res = beili(code = "600000", refresh = True)
+    # print(res)
+    beiliSelect(refresh = False)
+    
