@@ -97,7 +97,7 @@ class BackTest:
         self.start = start_date # 回测开始日期
         self.end = end_date # 回测结束日期
         self.days = days # 每年的交易天数，用于计算回测指标，按中国股市默认为242天/年
-        self.Sizer = Sizer #头寸规模类，默认不提供
+        self.Sizer = Sizer # 头寸规模
         self.initBT()
         
     # 初始化BackTrader
@@ -115,7 +115,7 @@ class BackTest:
                 data_df = self.data
             else:
                 data_df = tools.getStockData(code = code, path = self.path, month = self.month, refresh = self.refresh, start_date = self.start, end_date = self.end)
-            # print("测试输出", data_df.info())
+            # print("测试输出数据大小", len(data_df))
             data = self.data_transform(code, data_df)
             self.cerebro.adddata(data, name = code)
         if self.bOpt == False:
