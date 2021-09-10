@@ -128,7 +128,9 @@ class HaiguiStrategy(bt.Strategy):
 @run.change_dir
 def main(refresh = True):
     # test(refresh = refresh)
-    marketTest(refresh = False, retest = False)
+    # marketTest(refresh = False, retest = False)
+    # select(refresh = True)
+    haigui_decise(code = "600622", date = "2021-09-08", buyprice = 2.86)
     
 
 # 对某只股票回测
@@ -220,6 +222,112 @@ def marketTest(refresh = False, retest = False):
     plt.ylabel("β")
     plt.savefig("./output/beta.png")
     plt.close()
+    
+    
+# 判断海龟策略进场条件
+@run.change_dir
+def bIn(code, refresh, month):
+    data = tools.getStockData(code, month = month, refresh = refresh, adjust = "qfq")
+    # 计算参数
+    # 20日内最高价
+    period = 20
+    # data["high"] = data.最高.rolling(period).max().shift(-1).values
+    high = []
+    j = 0
+    for i in range(-len(data), 0):
+        if j < period:
+            high.append(np.nan)
+            j += 1
+            continue
+        high.append(data.最高.values[i - period:i].max())
+    # print(len(high))
+    data["high"] = high
+    # 计算均线值
+    ma5 = data.收盘.rolling(5).mean().values
+    ma20 = data.收盘.rolling(20).mean().values
+    ma30 = data.收盘.rolling(30).mean().values
+    ma60 = data.收盘.rolling(60).mean().values
+    data["ma5"] = ma5
+    data["ma20"] = ma20
+    data["ma30"] = ma30
+    data["ma60"] = ma60
+    # print(code)
+    # print(high, ma5, ma20, ma30, ma60)
+    # 划分数据
+    # data = data.iloc[-month*22:, :]
+    # print(data.high, data.ma5, data.ma20, data.ma30, data.ma60)
+    data["入场"] = data.收盘 > data.high
+    res = data[data.入场 == True]
+    # print(data.loc[:, ["high", "收盘", "入场"]])
+    # plt.figure()
+    # data.plot(x = "日期", y = ["high", "收盘", "ma5", "ma20", "ma30", "ma60"])
+    # plt.savefig("./output/"+code+".jpg")
+    if len(res) != 0:
+        result = res.tail(1)
+        # print(code)
+        # print(result)
+        if result.ma5.values[0] > result.ma20.values[0] and result.ma5.values[0] > result.ma30.values[0] and result.ma5.values[0] > result.ma60.values[0]:
+            return None
+        else:
+            return result.日期.values[0], res.tail(1).high.values[0]
+    else:
+        return None
+    # print(data.info())
+    # print(data.head())
+    # print(res.iloc)
+    # print(data.describe())
+    
+    
+# 用海龟法则选股进场
+@run.change_dir
+def select(refresh = False):
+    month = 12
+    codes = tools.Research(refresh = refresh, month = month, highPrice = 3.0, bSelect = True, path = "./stockdata/", drop_days = 20*month)
+    n = len(codes)
+    print(n)
+    i = 0
+    results = pd.DataFrame(columns = ["股票代码", "突破时间", "突破价格"])
+    for code in codes:
+        i += 1.0
+        print("研究进度:", i/n*100, "%")
+        res = bIn(code, refresh = refresh, month = month)
+        if res is not None:
+            results = results.append({"股票代码":code, "突破时间":res[0], "突破价格":res[1]}, ignore_index = True)
+    results = results.sort_values(by = "突破时间")
+    print(results)
+    
+    
+# 计算海龟交易法的加仓，出场，止损点
+@run.change_dir
+def haigui_decise(code, date, buyprice = 0.0):
+    month = 1
+    data = tools.getStockData(code, month = month, refresh = True, adjust = "qfq")
+    # 计算AR值
+    # data = data[data.日期 <= date]
+    n = len(data)
+    data = data.loc[n-21:n-1, ["收盘", "最高", "最低"]]
+    print(data)
+    AR = []
+    for i in range(n-1, n-21, -1):
+        x1 = data.最高[i] - data.最低[i]
+        x2 = np.abs(data.最高[i] - data.收盘[i-1])
+        x3 = np.abs(data.最低[i] - data.收盘[i-1])
+        x = max(x1, x2, x3)
+        AR.append(x)
+    ATR = np.mean(AR)
+    low10 = data.最低.values[-10:].min()
+    print(ATR, low10)
+    if buyprice == 0.0:
+        price = data.收盘.values[-1]
+    else:
+        price = buyprice
+    addPrice1 = price + 0.5*ATR # 加仓价1
+    addPrice2 = addPrice1 + 0.5*ATR # 加仓价2
+    addPrice3 = addPrice2 + 0.5*ATR # 加仓价3
+    outPrice = low10 # 出场价
+    stopPrice = price - 2.0*ATR # 止损价
+    print("加仓价格1:", addPrice1, "加仓价格2:", addPrice2, "加仓价格3:", addPrice3, "出场价格:", outPrice, "止损价格:", stopPrice)
+    
     
 
 if __name__ == "__main__":

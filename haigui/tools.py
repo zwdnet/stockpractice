@@ -65,6 +65,7 @@ def make_stock_pool(data, highPrice = 5.0, bSelect = True, drop_days = 250):
     for code in smallData.代码.values:
         # print("测试，代码=", code)
         data = getStockData(code = code[2:])
+        # print("测试c ", code, len(data))
         if len(data) > drop_days:
             codes.append(code[2:])
             #newData.append(smallData[smallData.代码 == code], ignore_index = True)
@@ -83,14 +84,14 @@ def make_stock_pool(data, highPrice = 5.0, bSelect = True, drop_days = 250):
     
 # 获取股票池近month个月的日线数据
 @run.change_dir
-def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, start_date = "19000101", end_date = "21000101"):
+def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, start_date = "19000101", end_date = "21000101", adjust = "hfq"):
     # data = pd.read_csv(path, converters = {'代码':str}).代码.values
     new_codes = []
     discard_code = []
     # print(data)
     # 获取股票最近month个月数据
     if refresh == True:
-        os.system("rm ."+savePath+"*")
+        os.system("rm "+savePath+"*")
         if month > 0:
             end = datetime.date.today().strftime("%Y%m%d")
             # print("今天日期:", today)
@@ -106,7 +107,7 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, s
             print("已下载了", str(k/n*100), "%股票数据\n")
             code = i
             # print(code)
-            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = start, end_date = end, adjust = "qfq")
+            stock_data = getStockData(code = code, path = savePath, month = month, refresh = refresh, start_date = start_date, end_date = end_date, adjust = "qfq")
             # 排除上市不足两个月的股票。
             # print("测试，数据长度", len(stock_data))
             # if len(stock_data) > 60:
@@ -123,7 +124,7 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, s
     
 # 获取指定代码股票历史数据
 @run.change_dir
-def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_date = "19000101", end_date = "21000101"):
+def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_date = "19000101", end_date = "21000101", adjust = "hfq"):
     filename = path + code + ".csv"
     # print(filename)
     if os.path.exists(filename) and refresh == False:
@@ -143,10 +144,14 @@ def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_d
             start = start_date
         stock_data = None
         try:
-            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = start, end_date = end, adjust = "hfq")
+            stock_data = ak.stock_zh_a_hist(symbol = code, start_date = start, end_date = end, adjust = adjust)
         except:
             # print("获取股价数据发生异常")
-            stock_data = ef.stock.get_quote_history(code, beg = start, end = end, fqt = 2)
+            if adjust == "qfq":
+                fqt = 1
+            elif adjust == "hfq":
+                fqt = 2
+            stock_data = ef.stock.get_quote_history(code, beg = start, end = end, fqt = fqt)
         stock_data.日期 = pd.to_datetime(stock_data.日期)
         stock_data.to_csv(filename, index = False)
         return stock_data
@@ -175,9 +180,12 @@ def getBenchmarkData(code = "000300", path = "./", month = 0, refresh = False, s
     
 # 打包整个下载数据，选股过程，bSelect为True进行价格筛选
 @run.change_dir
-def Research(refresh = True, month = 0, highPrice = 5.0, start_date = "19000101", end_date = "21000101", bSelect = True, path = "./pooldata/", drop_days = 250):
+def Research(refresh = True, month = 0, highPrice = 5.0, start_date = "19000101", end_date = "21000101", bSelect = True, path = "./pooldata/", drop_days = 245):
+    # print("测试a", refresh)
     data = getData(refresh = refresh)
+    # print("测试b", len(data))
     pool_codes = make_stock_pool(data, highPrice, bSelect, drop_days)
+    # print("测试b", len(pool_codes))
     codes = getRecentData(codes = pool_codes, refresh = refresh, month = month, start_date = start_date, end_date = end_date, savePath = path)
     getBenchmarkData(month = month, refresh = refresh, start_date = start_date, end_date = end_date)
     return codes
