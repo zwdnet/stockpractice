@@ -292,5 +292,5 @@ if __name__ == "__main__":
     # marketTest(refresh = False, retest = False)
     # res = beili(code = "600000", refresh = True)
     # print(res)
-    beiliSelect(refresh = False)
+    beiliSelect(refresh = True)
     

@@ -130,7 +130,7 @@ def main(refresh = True):
     # test(refresh = refresh)
     # marketTest(refresh = False, retest = False)
     # select(refresh = True)
-    haigui_decise(code = "600622", date = "2021-09-08", buyprice = 2.86)
+    haigui_decise(code = "600622", date = "2021-09-08", buyprice = 2.98)
     
 
 # 对某只股票回测
