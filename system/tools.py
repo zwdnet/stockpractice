@@ -44,7 +44,7 @@ def getData(refresh = True):
     
 # 形成股票池
 @run.change_dir
-def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_days = 250):
+def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_days = 250, savePath = "./pooldata/"):
     if bSelect:
         # 股价低于highPrice的
         # smallData = data[data.最高 < highPrice]
@@ -52,12 +52,14 @@ def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_
     else:
         smallData = data
     # 排除ST个股
-    # print("排除前", len(smallData))
+    # print("makepool内")
+    # print("a排除前", len(smallData))
     smallData = smallData[~ smallData.名称.str.contains("ST")]
     # print("排除后", len(smallData))
     # 排除要退市个股
-    # print("排除前", len(smallData))
+    # print("b排除前", len(smallData))
     smallData = smallData[~ smallData.名称.str.contains("退")]
+    # print("排除后", len(smallData))
     # 上市时间太短需排除的股票代码
     # discard = ['sh600032', 'sh600905', 'sh601665', 'sh605167', 'sh688425', 'sh688509', 'sh688538', 'sz001208', 'sh601728', 'sh601825', 'sh605069']
     # smallData = smallData[~smallData.代码.isin(discard)]
@@ -65,8 +67,8 @@ def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_
     newData = pd.DataFrame()
     for code in smallData.代码.values:
         # print("测试，代码=", code)
-        data = getStockData(code = code[2:])
-        # print("测试c ", code, len(data))
+        data = getStockData(code = code[2:], path = savePath, refresh = True, bSave = False)
+        # print("makepool测试c ", code, len(data))
         if len(data) > drop_days:
             codes.append(code[2:])
             #newData.append(smallData[smallData.代码 == code], ignore_index = True)
@@ -92,7 +94,8 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, s
     # print(data)
     # 获取股票最近month个月数据
     if refresh == True:
-        os.system("rm "+savePath+"*")
+        if os.path.exists(savePath+"*"):
+            os.system("rm "+savePath+"*")
         if month > 0:
             end = datetime.date.today().strftime("%Y%m%d")
             # print("今天日期:", today)
@@ -108,7 +111,7 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, s
             print("已下载了", str(k/n*100), "%股票数据\n")
             code = i
             # print(code)
-            stock_data = getStockData(code = code, path = savePath, month = month, refresh = refresh, start_date = start_date, end_date = end_date, adjust = "qfq")
+            stock_data = getStockData(code = code, path = savePath, month = month, refresh = refresh, start_date = start_date, end_date = end_date, adjust = "qfq", bSave = False)
             # 排除上市不足两个月的股票。
             # print("测试，数据长度", len(stock_data))
             # if len(stock_data) > 60:
@@ -125,7 +128,7 @@ def getRecentData(codes, refresh = False, savePath = "./pooldata/", month = 0, s
     
 # 获取指定代码股票历史数据
 @run.change_dir
-def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_date = "19000101", end_date = "21000101", adjust = "hfq", period = "daily"):
+def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_date = "19000101", end_date = "21000101", adjust = "hfq", period = "daily", bSave = True):
     filename = path + code + "_" + period + ".csv"
     # print(filename)
     if os.path.exists(filename) and refresh == False:
@@ -161,7 +164,8 @@ def getStockData(code, path = "./pooldata/", month = 0, refresh = False, start_d
                 klt = 103
             stock_data = ef.stock.get_quote_history(code, beg = start, end = end, fqt = fqt, klt = klt)
         stock_data.日期 = pd.to_datetime(stock_data.日期)
-        stock_data.to_csv(filename, index = False)
+        if bSave == True:
+            stock_data.to_csv(filename, index = False)
         return stock_data
     
     
@@ -174,7 +178,8 @@ def getBenchmarkData(code = "000300", path = "./", month = 0, refresh = False, s
         data.日期 = pd.to_datetime(data.日期)
         return data
     else:
-        os.system("rm " + filename)
+        if os.path.exists(filename):
+            os.system("rm " + filename)
         benchmark_data = getStockData(code, path = path, month = month, refresh = refresh, start_date = start_date, end_date = end_date)
         benchmark_data.日期 = pd.to_datetime(benchmark_data.日期)
         # 将每列数据除以其最小值，这样用指数做基准不会太大
@@ -189,13 +194,22 @@ def getBenchmarkData(code = "000300", path = "./", month = 0, refresh = False, s
 # 打包整个下载数据，选股过程，bSelect为True进行价格筛选
 @run.change_dir
 def Research(refresh = True, month = 0, highPrice = 5.0, lowPrice = 0.0, start_date = "19000101", end_date = "21000101", bSelect = True, path = "./pooldata/", drop_days = 245):
+    codes_filename = path + "codes.csv"
+    if os.path.exists(codes_filename) and refresh == False:
+        codes = pd.read_csv(codes_filename, dtype = {"股票代码":str})
+        return codes.股票代码.values
     # print("测试a", refresh)
     data = getData(refresh = refresh)
     # print("测试b", len(data))
-    pool_codes = make_stock_pool(data, highPrice, lowPrice, bSelect, drop_days)
-    # print("测试b", len(pool_codes))
+    pool_codes = make_stock_pool(data = data, highPrice = highPrice, lowPrice = lowPrice, bSelect = bSelect, drop_days = drop_days, savePath = path)
+    # print("测试c", len(pool_codes))
     codes = getRecentData(codes = pool_codes, refresh = refresh, month = month, start_date = start_date, end_date = end_date, savePath = path)
-    getBenchmarkData(month = month, refresh = refresh, start_date = start_date, end_date = end_date)
+    # print("测试d", len(codes))
+    getBenchmarkData(month = month, refresh = refresh, start_date = start_date, end_date = end_date, path = path)
+    # 保存数据
+    df_codes = pd.DataFrame()
+    df_codes["股票代码"] = codes
+    df_codes.to_csv(path + "codes.csv")
     return codes
     
     

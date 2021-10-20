@@ -9,8 +9,6 @@ import akshare as ak
 import efinance as ef
 import run
 import tools
-import ma
-# import shape
 import talib
 import os
 import datetime
@@ -20,69 +18,6 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from dateutil.relativedelta import relativedelta
 
 
-# 检测k线有无method所定义的形态
-@run.change_dir
-def test(codes, method):
-    # print("检测k线形态")
-    results = {}
-    for code in codes:
-        date = []
-        filename = "./data2/" + code[2:] + ".csv"
-        # print("测试1", code)
-        if os.path.exists(filename):
-            data = pd.read_csv(filename)
-            # print("测试2", data.info(), data.head(), len(data))
-            result = method(data.开盘.values, data.最高.values, data.最低.values, data.收盘.values)
-            pos = ()
-            pos = list(np.nonzero(result))
-            if len(pos[0]) != 0:
-                date.append(data.日期[pos[0][-1]])
-                results[code] = date
-    return results
-    
-    
-# 获取指定股票代码集合的k线符合method形态的位置
-def getPosition(codes):
-    methods = {
-    "上吊线":talib.CDLHANGINGMAN,
-    "黄昏星":talib.CDLEVENINGDOJISTAR,
-    "看跌吞没":talib.CDLENGULFING,
-    "乌云盖顶":talib.CDLDARKCLOUDCOVER,
-    "高位孕线":talib.CDLHARAMI,
-    "三只乌鸦":talib.CDLIDENTICAL3CROWS,
-    "下降三法":talib.CDLRISEFALL3METHODS
-    }
-    
-    today = datetime.datetime.now()
-    for name, method in methods.items():
-        results = test(codes, method)
-        if results:
-            # print(name, results)
-            date = list(results.values())
-            date = datetime.datetime.strptime(date[0][0], '%Y-%m-%d %H:%M')
-            days = (today - date).days
-            # print(days)
-            # 如果是今天出现的形态
-            code = list(results.keys())[0]
-            # 报告两天内出现的
-            if days <= 2:
-                title, content = makeContent(date, name, code)
-                if title != "" and content != "":
-                    tools.sentMail(title, content)
-    
-    
-# 获取股票60分钟线数据
-@run.change_dir
-def getRecentData(codes, refresh = False, savePath = "./data2/"):
-    if refresh == True:
-        for code in codes:
-            stock_data = ef.stock.get_quote_history(code[2:], klt = 60)
-            filename = savePath + code[2:] + ".csv"
-            stock_data.to_csv(filename)
-    else:
-        return
-        
-        
 # 制作报告邮件内容
 @run.change_dir
 def makeContent(date, name, code):
@@ -102,104 +37,82 @@ def makeContent(date, name, code):
     else:
         return ("", "")
         
-        
-        
-# 进行一次卖出k线形态检测
-@run.change_dir
-def taskA(codes):
-    getRecentData(codes = codes, refresh = True, savePath = "./data2/")
-    getPosition(codes)
-    now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(now, "执行了一次k线形态检测")
-    
     
 # 进行一次止损价检测
-def taskB(stopPrice, codes):
+def taskA(buyPrice, codes):
+    filename = "./HighPrice.txt"
+    highPrice = 0
     date = datetime.datetime.now()
-    print(date, "执行了一次止损价格检测")
     for code in codes:
-        lastestdata = ef.stock.get_latest_stock_info([code[2:]])
+        lastestdata = ef.stock.get_latest_quote([code[2:]])
         lastPrice = lastestdata.最新价.values[0]
-        if lastPrice <= stopPrice and lastPrice != 0.0:
+        # 5%止损
+        if lastPrice <= buyPrice*0.95 and lastPrice != 0.0:
             name = "到达止损价"
-            print(lastPrice, stopPrice)
+            print(lastPrice, buyPrice*0.95)
             title, content = makeContent(date, name, code)
             if title != "" and content != "":
                 tools.sentMail(title, content)
-    
-"""    
-# 进行一次顶部技术形态监测
-def taskC(codes):
-    date = datetime.datetime.now()
-    print(date, "执行了一次止损价格检测")
-    shapes = ["头肩顶", "三角顶", "矩形顶", "顶部扩散"]
-    for code in codes:
-        for name in shapes:
-            results = shape.shape(code[2:], name)
-            # print(code, name, results)
-            if len(results) != 0:
-                shapename = results.iloc[-1].名称
-                shapedate = results.iloc[-1].日期
-                shapedate = datetime.datetime.strptime(shapedate, '%Y-%m-%d')
-                days = (date - shapedate).days
-                if days <= 2:
-                    title, content = makeContent(shapedate, shapename, code)
-                    if title != "" and content != "":
-                        tools.sentMail(title, content)
-"""
-                        
-                       
-# 进行一次卖出均线检测
-def taskD(codes):
-    date = datetime.datetime.now()
-    print(date, "执行了一次卖出均线检测")
-    today = datetime.date.today().strftime("%Y%m%d")
-    month = 6
-    savePath = "./pooldata/"
-    months = (datetime.date.today() - relativedelta(months = month)).strftime("%Y%m%d")
-    for code in codes:
-        print(code)
-        stock_data = ak.stock_zh_a_hist(symbol = code[2:], start_date = months, end_date = today, adjust = "qfq")
-        filename = savePath + code[2:] + ".csv"
-        stock_data.to_csv(filename)
-        stock_data = ma.addMA(stock_data)
-        sell = ma.check(stock_data)[1]
-        # 今天出现卖点
-        if len(sell) != 0 and sell[-1] == len(stock_data) - 1:
-            title, content = makeContent(date, str(sell), code)
+        # 10%止盈
+        if os.path.exists(filename):
+            HighPrice = np.loadtxt(filename)
+            if HighPrice.size <= 0:
+                HighPrice = lastPrice
+        else:
+            HighPrice = lastPrice
+            
+        if HighPrice <= lastPrice:
+            HighPrice = lastPrice
+            np.savetxt(filename, np.array([HighPrice]))
+            
+        if lastPrice <= 0.9*HighPrice:
+            name = "到达止盈价"
+            print(lastPrice, HighPrice*0.9)
+            title, content = makeContent(date, name, code)
             if title != "" and content != "":
                 tools.sentMail(title, content)
+    print(date, "执行了一次止损价格检测，最新股价:", lastPrice)
+    
+    
+# 判断出场情况
+def taskB(codes):
+    date = datetime.datetime.now()
+    for code in codes:
+        data = tools.getStockData(code[2:], month = 3, refresh = True, path = "./data" period = "daily")
+        data = addMACD(data)
+        macd = data["macd"].values
+        if macd[-1] < 0.0 and macd[-2] < 0.0:
+            name = "出现卖出条件"
+            print(date, data.日期.values[-1])
+            title, content = makeContent(date, name, code)
+            if title != "" and content != "":
+                tools.sentMail(title, content)
+    print(date, "执行了一次出场检测")
+        
+        
+        
+# 计算日线数据的MACD信号
+def addMACD(data):
+    dif, dea, macd = talib.MACD(data.收盘, fastperiod = 12, slowperiod = 26, signalperiod = 9)
+    # print(macd[:100], signal[:100], hist[:100])
+    data["dif"] = dif
+    data["dea"] = dea
+    data["macd"] = macd
+    return data
     
 
-"""    
-# 运行死循环，定期检测，每隔s秒检测一次
-@run.change_dir
-def run(codes, s):
-    if s <= 0:
-        print("时间间隔需大于0，程序将退出\n")
-        return
-    while True:
-        task(codes)
-        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(now, "执行了一次")
-        time.sleep(s)
-"""
-
-
 # 每间隔s分钟监控codes股票形态和止损价(1分钟)
-def run(codes, s, price):
+def run(codes, s, buyPrice):
     scheduler = BlockingScheduler(timezone="Asia/Chongqing")
-    # scheduler.add_job(taskA, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(s), args = [codes])
-    scheduler.add_job(taskB, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [price, codes])
-    # scheduler.add_job(taskC, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [codes])
-    scheduler.add_job(taskD, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [codes])
+    scheduler.add_job(taskA, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "*/"+str(1), args = [buyPrice, codes])
+    scheduler.add_job(taskB, "cron", day_of_week = "mon-fri", hour = "9-15", minute = "30", args = [codes])
     scheduler.start()
 
 
 if __name__ == "__main__":
-    code = "sh601619"
+    code = "sz000428"
     codes = [code]
-    s = 30
-    stopPrice = 3.3
-    run(codes, s, stopPrice)
+    s = 10
+    buyPrice = 3.68
+    run(codes, s, buyPrice)
     
