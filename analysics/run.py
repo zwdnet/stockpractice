@@ -21,8 +21,10 @@ def run(gpus, user, server):
         s = "scp -r ./*.py " + user + "@" + server + ":~/code"
         # print("测试3", s)
         os.system(s)
+        s = "scp -r ./*.csv " + user + "@" + server + ":~/code"
+        os.system(s)
         # 运行指定代码
-        s = "ssh root@" + server +  " -p 2222 \"python /home/code/" + sys.argv[2] + "\""
+        s = "ssh root@" + server +  " -p 2222 \"python -u /home/code/" + sys.argv[2] + "\""
         # print("测试4", s)
         print("正在运行代码……\n")
         os.system(s)
@@ -45,7 +47,7 @@ def run(gpus, user, server):
         s = "scp " + sys.argv[1] + " " + user + "@" + server + ":~/code"
         os.system(s)
         # 运行指定代码
-        s = "ssh root@" + server +  " -p 2222 \"python /home/code/" + sys.argv[1] + "\""
+        s = "ssh root@" + server +  " -p 2222 \"python -u /home/code/" + sys.argv[1] + "\""
         os.system(s)
         # 将代码目录里所有文件传回
         s = "scp -r " + user +"@" + server + ":~/code/output/* ./output/"

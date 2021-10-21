@@ -83,8 +83,8 @@ def main():
     # 读取数据
     invent_data = pd.read_csv("./收益数据.csv", index_col = "日期", parse_dates = ["日期"])
     trade_data = pd.read_csv("./交易记录.csv")
-    print(invent_data.info(), invent_data.head())
-    print(trade_data.info(), trade_data.head())
+    print(invent_data.info(), invent_data.head(), invent_data.tail())
+    print(trade_data.info(), trade_data.head(), trade_data.tail())
     
     # 画图
     invent_data.账户收益额.plot()
@@ -98,7 +98,7 @@ def main():
     
     # 下载沪深300数据
     code = "000300"
-    hs300_data = tools.getStockData(code, path = "./", month = 0, refresh = True, start_date = "20210708", end_date = "20210928", adjust = "hfq")
+    hs300_data = tools.getStockData(code, path = "./", month = 0, refresh = True, start_date = "20210708", end_date = "20211021", adjust = "hfq")
     print(hs300_data.info())
     
     # 计算基准指数的收益率

@@ -21,6 +21,8 @@ def run(gpus, user, server):
         s = "scp -r ./*.py " + user + "@" + server + ":~/code"
         # print("测试3", s)
         os.system(s)
+        s = "scp -r ./*.csv " + user + "@" + server + ":~/code"
+        os.system(s)
         # 运行指定代码
         s = "ssh root@" + server +  " -p 2222 \"python -u /home/code/" + sys.argv[2] + "\""
         # print("测试4", s)

@@ -65,7 +65,7 @@ def taskA(buyPrice, codes):
             HighPrice = lastPrice
             np.savetxt(filename, np.array([HighPrice]))
             
-        if lastPrice <= 0.9*HighPrice:
+        if lastPrice <= 0.9*HighPrice and lastPrice != 0.0:
             name = "到达止盈价"
             print(lastPrice, HighPrice*0.9)
             title, content = makeContent(date, name, code)

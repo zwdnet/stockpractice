@@ -15,12 +15,12 @@ import os
 
 # 选股，根据交易系统入场规则选择合适入场的股票
 @run.change_dir
-def Select(refresh = True, HighPrice = 10.0, month = 3):
+def Select(refresh = True, highPrice = 10.0, month = 3):
     # 定义需要的常量
     stop_loss = 0.05 # 买入止损比例5%
     stop_profit = 0.1 # 止盈比例10%
     # 获取符合筛选条件的股票的代码
-    codes = tools.Research(refresh = refresh, month = month, bSelect = True, path = "./systemdata/")
+    codes = tools.Research(refresh = refresh, month = month, highPrice = highPrice, bSelect = True, path = "./systemdata/")
     # 找买点
     n = len(codes)
     t = 0
@@ -83,7 +83,7 @@ def addMACD(data):
 @run.change_dir
 def makeData(code, month, refresh = True):
     data_day = tools.getStockData(code, month = month, refresh = refresh, period = "daily")
-    data_week = tools.getStockData(code, month = month, refresh = True, period = "weekly")
+    data_week = tools.getStockData(code, month = month, refresh = refresh, period = "weekly")
     # print(len(data_day), len(data_week))
     # print(data_day.head(), data_week.head())
     data_week = addMA(data_week)
@@ -102,7 +102,7 @@ def makeData(code, month, refresh = True):
 # 主程序
 def main():
     tools.init()
-    Select(refresh = False)
+    Select(refresh = True)
 
 
 if __name__ == "__main__":
