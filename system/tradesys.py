@@ -20,9 +20,10 @@ def Select(refresh = True, highPrice = 10.0, month = 3):
     stop_loss = 0.05 # 买入止损比例5%
     stop_profit = 0.1 # 止盈比例10%
     # 获取符合筛选条件的股票的代码
-    codes = tools.Research(refresh = refresh, month = month, highPrice = highPrice, bSelect = True, path = "./systemdata/")
+    codes = tools.Research(refresh = refresh, month = month, highPrice = highPrice, bSelect = True, path = "./tradedata/")
     # 找买点
     n = len(codes)
+    print("测试", n)
     t = 0
     result = pd.DataFrame()
     for code in codes:
@@ -51,6 +52,7 @@ def Select(refresh = True, highPrice = 10.0, month = 3):
                 if macd[i] > 0 and macd[i-1] < 0 and dif[i-1] < dea[i-1] and dif[i] > dea[i]:
                     result = result.append({"股票代码":code, "买点日期":day}, ignore_index = True)
             i += 1
+    print("测试", result)
     result = result.sort_values(by = "买点日期")
     print(result)
     
@@ -82,8 +84,8 @@ def addMACD(data):
 # 准备数据
 @run.change_dir
 def makeData(code, month, refresh = True):
-    data_day = tools.getStockData(code, month = month, refresh = refresh, period = "daily")
-    data_week = tools.getStockData(code, month = month, refresh = refresh, period = "weekly")
+    data_day = tools.getStockData(code, month = month, refresh = refresh, period = "daily", path = "./tradedata/")
+    data_week = tools.getStockData(code, month = month, refresh = refresh, period = "weekly", path = "./tradedata/")
     # print(len(data_day), len(data_week))
     # print(data_day.head(), data_week.head())
     data_week = addMA(data_week)
@@ -102,7 +104,7 @@ def makeData(code, month, refresh = True):
 # 主程序
 def main():
     tools.init()
-    Select(refresh = True)
+    Select(refresh = False)
 
 
 if __name__ == "__main__":

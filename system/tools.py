@@ -29,15 +29,15 @@ def init():
     
 # 获取股价数据
 @run.change_dir
-def getData(refresh = True):
+def getData(refresh = True, path = "./"):
     data = pd.DataFrame()
     if refresh == True:
         stock_zh_a_spot_df = ak.stock_zh_a_spot()
         # print(stock_zh_a_spot_df.info())
-        stock_zh_a_spot_df.to_csv("./stocks.csv")
+        stock_zh_a_spot_df.to_csv(path + "stocks.csv")
         data = stock_zh_a_spot_df
     else:
-        data = pd.read_csv("./stocks.csv", dtype = {"code":str, "昨日收盘":np.float64})# converters = {'代码':str})
+        data = pd.read_csv(path + "stocks.csv", dtype = {"code":str, "昨日收盘":np.float64})# converters = {'代码':str})
     # print(data.info())
     return data
     
@@ -45,6 +45,9 @@ def getData(refresh = True):
 # 形成股票池
 @run.change_dir
 def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_days = 250, savePath = "./pooldata/"):
+    # print("makepool内")
+    # print("开始前", len(data))
+    # print(data.head())
     if bSelect:
         # 股价低于highPrice的
         # smallData = data[data.最高 < highPrice]
@@ -52,7 +55,6 @@ def make_stock_pool(data, highPrice = 5.0, lowPrice = 0.0, bSelect = True, drop_
     else:
         smallData = data
     # 排除ST个股
-    # print("makepool内")
     # print("a排除前", len(smallData))
     smallData = smallData[~ smallData.名称.str.contains("ST")]
     # print("排除后", len(smallData))
@@ -199,9 +201,10 @@ def Research(refresh = True, month = 0, highPrice = 5.0, lowPrice = 0.0, start_d
         codes = pd.read_csv(codes_filename, dtype = {"股票代码":str})
         return codes.股票代码.values
     # print("测试a", refresh)
-    data = getData(refresh = refresh)
+    data = getData(refresh = refresh, path = path)
     # print("测试b", len(data))
     pool_codes = make_stock_pool(data = data, highPrice = highPrice, lowPrice = lowPrice, bSelect = bSelect, drop_days = drop_days, savePath = path)
+
     # print("测试c", len(pool_codes))
     codes = getRecentData(codes = pool_codes, refresh = refresh, month = month, start_date = start_date, end_date = end_date, savePath = path)
     # print("测试d", len(codes))
