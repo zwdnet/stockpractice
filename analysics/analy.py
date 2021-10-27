@@ -98,7 +98,7 @@ def main():
     
     # 下载沪深300数据
     code = "000300"
-    hs300_data = tools.getStockData(code, path = "./", month = 0, refresh = True, start_date = "20210708", end_date = "20211021", adjust = "hfq")
+    hs300_data = tools.getStockData(code, path = "./", month = 0, refresh = True, start_date = "20210708", end_date = "20211026", adjust = "hfq")
     print(hs300_data.info())
     
     # 计算基准指数的收益率

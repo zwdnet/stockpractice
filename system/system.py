@@ -86,22 +86,8 @@ def init_global():
 """
     
 # 封装全局变量
-class TradeData():
+class Trade():
     def __init__(self):
-        """
-        self._cash = 1000000 # 初始资金
-        self._cash_init = 1000000
-        self._commit_rate = 0.0006 # 佣金税收费率
-        self._stocks = 0 # 持仓量
-        self._cost = 0.0 # 交易成本
-        self._value = 0.0 # 股票市值
-        self._profit = 0.0 # 净收益
-        self._buy_value = 0.0 # 买入后的总资产
-        self._sell_value = 0.0 # 卖出后的总资产
-        # 记录每次交易的结果
-        self._hold_days = [] # 持股天数
-        self._trade_profit = [] # 每次交易的收益(为负则是亏损)
-        """
         self.init_data()
         
     def init_data(self):
@@ -114,113 +100,204 @@ class TradeData():
         self._profit = 0.0 # 净收益
         self._buy_value = 0.0 # 买入后的总资产
         self._sell_value = 0.0 # 卖出后的总资产
+        self._stoptimes = 0 # 止盈止损次数
+        # self._date = None # 交易日期
         # 记录每次交易的结果
         self._hold_days = [] # 持股天数
         self._trade_profit = [] # 每次交易的收益(为负则是亏损)
         
-    def get_cash(self):
-        return self._cash
+        # 回测指标数据
+        self._total_cash = [] # 总现金
+        self._total_stock = [] # 总持股数
+        self._total_value = [] # 总持仓市值
+        self._total_profit = [] # 总盈利
+        self._total_cost = [] # 总成本
         
-    def set_cash(self, cash):
-        self._cash = cash
+    # 执行交易，记录结果
+    def do_trade(self, direct, price, hold_days = -1, bStop = False):
+        # 买入
+        if direct == "buy":
+            if self._stocks == 0:
+                stocks = math.floor(self._cash/(100*price*(1+self._commit_rate)))*100
+                if stocks*price*(1 + self._commit_rate) > self._cash:
+                    stocks -= 100
+            self._stocks = stocks
+            self._value = self._stocks * price
+            self._cost = self._value * self._commit_rate
+            self._cash = self._cash - self._value - self._cost
+            self._buy_value = self._cash + self._value
+        # 卖出
+        elif direct == "sell":
+            if self._stocks != 0:
+                self._value = self._stocks * price
+                self._cost = self._value * self._commit_rate
+                self._cash = self._cash + self._value - self._cost
+                self._value = 0.0
+                self._stocks = 0
+                self._sell_value = self._cash + self._value
+                self._profit = self._sell_value - self._buy_value
+                self._trade_profit.append(self._profit)
+                self._hold_days.append(hold_days)
+                if bStop == True:
+                    self._stoptimes += 1
+        else:
+            print("direct参数有误")
+            
+    # 记录交易数据
+    def make_record(self, price):
+        self._total_cash.append(self._cash)
+        self._total_stock.append(self._stocks)
+        self._total_value.append(self._stocks * price + self._cash)
+        self._total_profit.append(self._stocks * price + self._cash - self._cash_init)
+        self._total_cost.append(self._cost)
         
-    def get_cash_init(self):
-        return self._cash_init
+    # 返回回测指标
+    def _get_results(self, days):
+        # 统计计算回测结果    
+        testResult = pd.DataFrame({
+            "日期":days,
+            "现金":self._total_cash,
+            "股票数量":self._total_stock,
+            "市值":self._total_value,
+            "累积成本":self._total_cost,
+            "累积收益":self._total_profit,
+            "每日市值":self._total_value,
+            "止盈止损次数":self._stoptimes
+            })
+        testResult.set_index(["日期"], inplace = True)
+        return testResult
         
-    def set_cash_init(self, cash_init):
-        self._cash_init = cash_init
-        
-    def get_commit_rate(self):
-        return self._commit_rate
-        
-    def set_commit_rate(self, commit_rate):
-        self._commit_rate = commit_rate
+    # 生成回测数据
+    def make_test_data(self, bench_data, code, days):
+        testResult = self._get_results(days)
+        result = pd.Series([], dtype='float64')
+        result["股票代码"] = code
+        returns, bench = self._daily_return_data(testResult, bench_data)
+        result = self._risk_data(returns, bench, result)
+        result = self._trade_data(result, testResult)
+        result = self._profit_data(testResult, bench, result)
     
-    def get_stocks(self):
-        return self._stocks
+        return result
         
-    def set_stocks(self, stocks):
-        self._stocks = stocks
-        
-    def get_cost(self):
-        return self._cost
-        
-    def set_cost(self, cost):
-        self._cost = cost
+    # 生成收益率数据
+    def _daily_return_data(self, testResult, bench_data):
+        # 计算每日收益率
+        profit_rate = testResult["每日市值"]/testResult["每日市值"].shift(1) - 1.0
+        returns = pd.DataFrame()
+        returns["日期"] = testResult.index.values
+        returns["每日收益率"] = profit_rate.values
+        returns.每日收益率.fillna(0.0, inplace = True)
     
-    def get_value(self):
-        return self._value
-        
-    def set_value(self, value):
-        self._value = value
-        
-    def get_profit(self):
-        return self._profit
-        
-    def set_profit(self, profit):
-        self._profit = profit
+        bench = bench_data[bench_data.日期.isin(returns.日期)]
+        bench.每日收益率.fillna(0.0, inplace = True)
     
-    def get_buy_value(self):
-        return self._buy_value
-        
-    def set_buy_value(self, buy_value):
-        self._buy_value = buy_value
-        
-    def get_sell_value(self):
-        return self._sell_value
-        
-    def set_sell_value(self, sell_value):
-        self._sell_value = sell_value
-        
-    def append_hold_days(self, hold_day):
-        self._hold_days.append(hold_day)
-        
-    def append_trade_profit(self, trade_profit):
-        self._trade_profit.append(trade_profit)
-        
-    def get_hold_days(self):
-        return self._hold_days
-        
-    def get_trade_profit(self):
-        return self._trade_profit
+        returns.set_index(["日期"], inplace = True)
+        bench.set_index(["日期"], inplace = True)
     
-    
-# 执行交易，记录结果
-def do_trade(date, direct, price, trade):
-    if direct == "buy":
-        if trade.get_stocks() == 0:
-            stocks = math.floor(trade.get_cash()/(100*price))*100
-            if stocks*price*(1 + trade.get_commit_rate()) > trade.get_cash():
-                stocks -= 100
-            trade.set_stocks(stocks)
-            trade.set_value(trade.get_stocks()*price)
-            trade.set_cost(trade.get_value()*trade.get_commit_rate())
-            trade.set_cash(trade.get_cash() - trade.get_value() - trade.get_cost())
-            trade.set_buy_value(trade.get_cash() + trade.get_value())
-            # print(date, "以", price, "买入")
-            # print(cash, stocks, value)
-    elif direct == "sell":
-        if trade.get_stocks() != 0:
-            trade.set_value(trade.get_stocks()*price)
-            cost = trade.set_cost(trade.get_value()*trade.get_commit_rate())
-            trade.set_cash(trade.get_cash() + trade.get_value() - trade.get_cost())
-            trade.set_value(0.0)
-            trade.set_stocks(0)
-            trade.set_sell_value(trade.get_cash() + trade.get_value())
-            trade.set_profit(trade.get_sell_value() - trade.get_buy_value())
-            # print("交易", trade.get_profit())
-            trade.append_trade_profit(trade.get_profit())
-            # trade_profit = trade.get_trade_profit()
-            # print("测试", trade_profit, len(trade_profit))
-    else:
-        print("direct参数有误")
+        return returns, bench
         
+    # 计算风险回测指标
+    def _risk_data(self, returns, bench, result):
+        if returns.每日收益率.std() != 0.0:
+            riskfact = self._risk_analyse(returns.每日收益率, bench.每日收益率)
+            result["夏普比率"] = riskfact.夏普比率
+            result["信息比例"] = riskfact.信息比例
+            result["索提比率"] = riskfact.索提比率
+            result["调整索提比率"] = riskfact.调整索提比率
+            result["skew值"] = riskfact.skew值
+            result["_calmar"] = riskfact._calmar
+            result["α"] = riskfact.α
+            result["β"] = riskfact.β
+        else:
+            result["夏普比率"] = 0.0
+            result["信息比例"] = 0.0
+            result["索提比率"] = 0.0
+            result["调整索提比率"] = 0.0
+            result["skew值"] = 0.0
+            result["_calmar"] = 0.0
+            result["α"] = 0.0
+            result["β"] = 0.0
+        
+        return result
+        
+    # 计算各种回测指标
+    def _risk_analyse(self, returns, bk_returns, rf = 0.02, periods = 242, annualize = True, trading_year_days = 242):
+        # 计算夏普比率
+        _sharpe = quantstats.stats.sharpe(returns = returns, rf = rf, periods = periods, annualize = True, trading_year_days = trading_year_days)
+        # 计算αβ值
+        _alphabeta = quantstats.stats.greeks(returns, bk_returns, periods = periods)
+        # 计算信息比率
+        _info = quantstats.stats.information_ratio(returns, bk_returns)
+        # 索提比率
+        _sortino = quantstats.stats.sortino(returns = returns, rf = 0.02, periods = periods, annualize = True, trading_year_days = trading_year_days)
+        # 调整索提比率
+        _adjustSt = quantstats.stats.adjusted_sortino(returns = returns, rf = rf, periods = periods, annualize = True, trading_year_days = trading_year_days)
+        # skew值
+        _skew = quantstats.stats.skew(returns = returns)
+        # calmar值
+        _calmar = quantstats.stats.calmar(returns = returns)
+    
+        results = pd.Series({
+            "夏普比率": _sharpe,
+            "α": _alphabeta[0],
+            "β": _alphabeta[1],
+            "信息比例": _info,
+            "索提比率": _sortino,
+            "调整索提比率": _adjustSt,
+            "skew值": _skew,
+            "_calmar": _calmar
+        })
+        return results
+        
+    # 生成交易数据
+    def _trade_data(self, result, testResult):
+        # 计算生成回测结果
+        trade_profit = self._trade_profit
+        win_times = len([i for i in trade_profit if i > 0])
+        loss_times = len(trade_profit) - win_times
+        win_money = sum([i for i in trade_profit if i > 0])
+        loss_money = sum([i for i in trade_profit if i < 0])
+        if loss_times == 0:
+            winvsloss = np.nan         
+            wmvslm = np.nan           
+        else:
+            winvsloss = win_times/loss_times
+            wmvslm = abs(win_money)/abs(loss_money)
+    
+        if loss_times == 0:
+            result["胜率"] = 0.0
+            result["盈亏比"] = 0.0
+        else:
+            result["胜率"] = win_times/loss_times
+            result["盈亏比"] = abs(win_money)/abs(loss_money)
+        result["平均持股天数"] = np.mean(self._hold_days)
+        if win_times == 0 and loss_times == 0:
+            result["止盈止损占比"] = np.nan
+        else:
+            result["止盈止损占比"] = testResult["止盈止损次数"].values[0]/(win_times+loss_times)
+        
+        return result
+        
+    # 计算收益指标
+    def _profit_data(self, testResult, bench, result):
+        result["总收益"] = testResult["累积收益"][-1]
+        result["总收益率"] = testResult["累积收益"][-1]/self._cash_init
+        # 基准总收益率
+        benchreturn = bench.收盘.values[-1]/bench.收盘.values[0] - 1.0
+        result["策略基准收益差"] = result.总收益率 - benchreturn
+        result["总成本"] = testResult["累积成本"][-1]
+        if result["总收益"] == 0.0:
+            result["成本盈利占比"] = np.nan
+        else:
+            result["成本盈利占比"] = result["总成本"]/result["总收益"]
+        
+        return result
+
         
 # 实际进行回测过程
 def test_process(data_day, data_week, trade):
     days, days_s_slop, days_l_slop, days_close, macd, dif, dea = make_temp_data(data_day, data_week)
     # 回测指标数据
-    # cash_init = copy.deepcopy(cash)
     total_cash = [] # 总现金
     total_stock = [] # 总持股数
     total_value = [] # 总持仓市值
@@ -236,27 +313,25 @@ def test_process(data_day, data_week, trade):
     stop_profit = 0.1 # 止盈比例10%
     highest_price = 0.0 # 交易时的最高价
     stoptimes = 0 # 止损止盈卖出次数
+    bStop = False # 是否止盈止损
     for day in days:
         # print("bug测试", cash, cash_init)
         # 进行交易
         if bTrade == True and bIn == True:
-            do_trade(day, "buy", days_close[i], trade)
+            trade.do_trade("buy", days_close[i])
             buy_days = i
             buy_price = days_close[i]
             highest_price = buy_price
             bTrade = False
         elif bTrade == True and bIn == False:
-            do_trade(day, "sell", days_close[i], trade)
-            trade.append_hold_days(i - buy_days + 1)
+            trade.do_trade("sell", days_close[i], hold_days = i - buy_days + 1, bStop = bStop)
+            # trade.append_hold_days(i - buy_days + 1)
             buy_days = -1
             highest_price = 0.0
             bTrade = False
-        # 记录
-        total_cash.append(trade.get_cash())
-        total_stock.append(trade.get_stocks())
-        total_value.append(trade.get_stocks()*days_close[i] + trade.get_cash())
-        total_profit.append(trade.get_stocks()*days_close[i] + trade.get_cash() - trade.get_cash_init())
-        total_cost.append(trade.get_cost())
+            bStop = False
+
+        trade.make_record(days_close[i])
         week = data_week[data_week.日期 <= day]
         if days_close[i] > highest_price:
             highest_price = days_close[i]
@@ -284,6 +359,7 @@ def test_process(data_day, data_week, trade):
                     stoptimes += 1
                     bIn = False
                     bTrade = True
+                    bStop = True
                     continue
             else: # 高于买入价，按浮盈止盈
                 if (highest_price - days_close[i])/highest_price >= stop_profit:
@@ -291,6 +367,7 @@ def test_process(data_day, data_week, trade):
                     stoptimes += 1
                     bIn = False
                     bTrade = True
+                    bStop = True
                     continue
             # 判断是否达到出场条件
             if i > 2:
@@ -299,21 +376,6 @@ def test_process(data_day, data_week, trade):
                    bIn = False
                    bTrade = True
         i += 1
-        
-    # 统计计算回测结果    
-    testResult = pd.DataFrame({
-        "日期":days,
-        "现金":total_cash,
-        "股票数量":total_stock,
-        "市值":total_value,
-        "累积成本":total_cost,
-        "累积收益":total_profit,
-        "每日市值":total_value,
-        "止盈止损次数":stoptimes
-    })
-    testResult.set_index(["日期"], inplace = True)
-    
-    return testResult
 
 
 # 生成临时数据
@@ -326,148 +388,14 @@ def make_temp_data(data_day, data_week):
     dif = data_day["dif"].values
     dea = data_day["dea"].values
     return days, days_s_slop, days_l_slop, days_close, macd, dif, dea
-    
-    
-# 生成交易数据
-def trade_data(result, testResult, trade):
-    # 计算生成回测结果
-    trade_profit = trade.get_trade_profit()
-    # print("测试", trade_profit, len(trade_profit))
-    win_times = len([i for i in trade_profit if i > 0])
-    loss_times = len(trade_profit) - win_times
-    win_money = sum([i for i in trade_profit if i > 0])
-    loss_money = sum([i for i in trade_profit if i < 0])
-    if loss_times == 0:
-        winvsloss = np.nan         
-        wmvslm = np.nan           
-    else:
-        winvsloss = win_times/loss_times
-        wmvslm = abs(win_money)/abs(loss_money)
-    
-    if loss_times == 0:
-        result["胜率"] = 0.0
-        result["盈亏比"] = 0.0
-    else:
-        result["胜率"] = win_times/loss_times
-        result["盈亏比"] = abs(win_money)/abs(loss_money)
-    result["平均持股天数"] = np.mean(trade.get_hold_days())
-    if win_times == 0 and loss_times == 0:
-        result["止盈止损占比"] = np.nan
-    else:
-        result["止盈止损占比"] = testResult["止盈止损次数"].values[0]/(win_times+loss_times)
-        
-    return result
-    
-    
-# 生成收益率数据
-def daily_return_data(testResult, bench_data):
-    # 计算每日收益率
-    profit_rate = testResult["每日市值"]/testResult["每日市值"].shift(1) - 1.0
-    returns = pd.DataFrame()
-    returns["日期"] = testResult.index.values
-    returns["每日收益率"] = profit_rate.values
-    returns.每日收益率.fillna(0.0, inplace = True)
-    
-    bench = bench_data[bench_data.日期.isin(returns.日期)]
-    bench.每日收益率.fillna(0.0, inplace = True)
-    
-    returns.set_index(["日期"], inplace = True)
-    bench.set_index(["日期"], inplace = True)
-    
-    return returns, bench
-    
-    
-# 计算风险回测指标
-def risk_data(returns, bench, result):
-    if returns.每日收益率.std() != 0.0:
-        riskfact = risk_analyse(returns.每日收益率, bench.每日收益率)
-    if returns.每日收益率.std() != 0.0:
-        result["夏普比率"] = riskfact.夏普比率
-        result["信息比例"] = riskfact.信息比例
-        result["索提比率"] = riskfact.索提比率
-        result["调整索提比率"] = riskfact.调整索提比率
-        result["skew值"] = riskfact.skew值
-        result["_calmar"] = riskfact._calmar
-        result["α"] = riskfact.α
-        result["β"] = riskfact.β
-    else:
-        result["夏普比率"] = 0.0
-        result["信息比例"] = 0.0
-        result["索提比率"] = 0.0
-        result["调整索提比率"] = 0.0
-        result["skew值"] = 0.0
-        result["_calmar"] = 0.0
-        result["α"] = 0.0
-        result["β"] = 0.0
-        
-    return result
-    
-    
-# 计算收益指标
-def profit_data(testResult, bench, result, trade):
-    result["总收益"] = testResult["累积收益"][-1]
-    result["总收益率"] = testResult["累积收益"][-1]/trade.get_cash_init()
-    # 基准总收益率
-    benchreturn = bench.收盘.values[-1]/bench.收盘.values[0] - 1.0
-    result["策略基准收益差"] = result.总收益率 - benchreturn
-    result["总成本"] = testResult["累积成本"][-1]
-    if result["总收益"] == 0.0:
-        result["成本盈利占比"] = np.nan
-    else:
-        result["成本盈利占比"] = result["总成本"]/result["总收益"]
-        
-    return result
-    
-    
-# 生成回测数据
-def make_test_data(testResult, bench_data, code, trade):
-    result = pd.Series([], dtype='float64')
-    result["股票代码"] = code
-    returns, bench = daily_return_data(testResult, bench_data)
-    result = risk_data(returns, bench, result)
-    result = trade_data(result, testResult, trade)
-    result = profit_data(testResult, bench, result, trade)
-    
-    return result
-    
+
 
 # 对某只股票某个时间区间进行回测
 def backtest(code, bench_data, start_date = "20110101", end_date = "20210101"):
-    trade = TradeData()
+    trade = Trade()
     data_day, data_week = make_data(code, start_date = start_date, end_date = end_date, refresh = False)
-    testResult = test_process(data_day, data_week, trade)
-    return make_test_data(testResult, bench_data, code, trade)
-    
-    
-# 计算各种回测指标
-def risk_analyse(returns, bk_returns, rf = 0.02, periods = 242, annualize = True, trading_year_days = 242):
-    # 计算夏普比率
-    _sharpe = quantstats.stats.sharpe(returns = returns, rf = rf, periods = periods, annualize = True, trading_year_days = trading_year_days)
-    # print("函数内", returns.shape, returns[0], bk_returns.shape, bk_returns[0])
-    # 计算αβ值
-    _alphabeta = quantstats.stats.greeks(returns, bk_returns, periods = periods)
-    # 计算信息比率
-    _info = quantstats.stats.information_ratio(returns, bk_returns)
-    # 索提比率
-    _sortino = quantstats.stats.sortino(returns = returns, rf = 0.02, periods = periods, annualize = True, trading_year_days = trading_year_days)
-    # 调整索提比率
-    _adjustSt = quantstats.stats.adjusted_sortino(returns = returns, rf = rf, periods = periods, annualize = True, trading_year_days = trading_year_days)
-    # skew值
-    _skew = quantstats.stats.skew(returns = returns)
-    # calmar值
-    _calmar = quantstats.stats.calmar(returns = returns)
-    
-    results = pd.Series({
-        "夏普比率": _sharpe,
-        "α": _alphabeta[0],
-        "β": _alphabeta[1],
-        "信息比例": _info,
-        "索提比率": _sortino,
-        "调整索提比率": _adjustSt,
-        "skew值": _skew,
-        "_calmar": _calmar
-    })
-    return results
+    test_process(data_day, data_week, trade)
+    return trade.make_test_data(bench_data, code, data_day["日期"].values)
     
     
 # 画图
@@ -508,7 +436,7 @@ def drawing_process(result, data, title, bins = -1):
 # 获取市场最新股票代码
 def get_codes(refresh, start_date, end_date, month = 0, bSelect = False):
     codes = tools.Research(refresh = refresh, month = month, bSelect = bSelect, start_date = start_date, end_date = end_date)
-    codes = codes[:10]
+    codes = codes[:]
     return codes
     
     
@@ -555,7 +483,7 @@ def main():
     tools.init()
     month = 0
     refresh = False
-    retest = True
+    retest = False
     start_date = "20110101"
     end_date = "20210101"
     codes = get_codes(refresh = refresh, month = month, start_date = start_date, end_date = end_date)
