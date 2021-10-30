@@ -48,45 +48,13 @@ def make_data(code, start_date = "20110101", end_date = "20210101", refresh = Tr
     data_day = add_ma(data_day)
     data_day = add_slope(data_day)
     data_day = add_macd(data_day)
-    data_choose = data_week[(data_week.短期均线斜率 > 0) & (data_week.长期均线斜率 > 0)]
+    # data_choose = data_week[(data_week.短期均线斜率 > 0) & (data_week.长期均线斜率 > 0)]
 
     return data_day, data_week
     
-"""    
-# 全局变量，回测用的
-cash = 1000000 # 初始资金
-cash_init = 1000000
-commit_rate = 0.0006 # 佣金税收费率
-stocks = 0 # 持仓量
-cost = 0.0 # 交易成本
-value = 0.0 # 股票市值
-profit = 0.0 # 净收益
-buy_value = 0.0 # 买入后的总资产
-sell_value = 0.0 # 卖出后的总资产
-# 记录每次交易的结果
-hold_days = [] # 持股天数
-trade_profit = [] # 每次交易的收益(为负则是亏损)
-
-
-# 初始化全局变量
-def init_global():
-    global cash, cash_init, commit_rate, stocks, cost, value, profit, sell_value, buy_value, hold_days, trade_profit
-    cash = 1000000 # 初始资金
-    cash_init = 1000000
-    commit_rate = 0.0006 # 佣金税收费率
-    stocks = 0 # 持仓量
-    cost = 0.0 # 交易成本
-    value = 0.0 # 股票市值
-    profit = 0.0 # 净收益
-    buy_value = 0.0 # 买入后的总资产
-    sell_value = 0.0 # 卖出后的总资产
-    # 记录每次交易的结果
-    hold_days = [] # 持股天数
-    trade_profit = [] # 每次交易的收益(为负则是亏损)
-"""
     
-# 封装全局变量
-class Trade():
+# 计算并保存交易数据
+class Broker():
     def __init__(self):
         self.init_data()
         
@@ -292,89 +260,125 @@ class Trade():
             result["成本盈利占比"] = result["总成本"]/result["总收益"]
         
         return result
+        
+        
+# 封装回测过程
+class Trade:
+    def __init__(self):
+        self._bIn = False
+        self._bTrade = False
+        self._buy_days = -1 # 买入时的索引
+        self._buy_price = 0.0 # 买入价格
+        self._stop_loss = 0.05 # 买入止损比例5%
+        self._stop_profit = 0.1 # 止盈比例10%
+        self._highest_price = 0.0 # 交易时的最高价
+        self._bStop = False # 是否止盈止损
+
+        
+    # 具体交易过程
+    def doTrade(self, broker, i, price):
+        if self._bTrade == True and self._bIn == True:
+            broker.do_trade("buy", price)
+            self._buy_days = i
+            self._buy_price = price
+            self._highest_price = self._buy_price
+            self._bTrade = False
+        elif self._bTrade == True and self._bIn == False:
+            broker.do_trade("sell", price, hold_days = i - self._buy_days + 1, bStop = self._bStop)
+            # trade.append_hold_days(i - buy_days + 1)
+            self._buy_days = -1
+            self._highest_price = 0.0
+            self._bTrade = False
+            self._bStop = False
+        
+        
+    # 记录最高价
+    def record_highest_price(self, price):
+        if price > self._highest_price:
+            self._highest_price = price
+        
+
+    # 第一层滤网，周线层面上判断       
+    def level1(self, week):
+        judge = week["短期均线斜率"] > 0 and week["长期均线斜率"] > 0 and week["短期均线"] > week["长期均线"]
+        return judge
+    
+    
+    # 第二层滤网，日线层面上判断
+    def level2(self, macd, dif, dea, i):
+        return macd[i] > 0 and macd[i-1] < 0 and dif[i-1] < dea[i-1] and dif[i] > dea[i]
+    
+    
+    # 止损
+    def b_stop_loss(self, price):
+        return (self._buy_price - price)/self._buy_price >= self._stop_loss
+    
+    
+    # 止盈
+    def b_stop_profit(self, price):
+        return (self._highest_price - price)/self._highest_price >= self._stop_profit
+    
+
+    # 出场
+    def b_out(self, macd, i):
+        return (macd[i-2] < 0.0 and macd[i-1] < 0.0 and macd[i] < 0.0)
+        
+        
+    # 具体策略
+    def step(self, i, price, week, macd, dif, dea):
+        judge = self.level1(week)
+        if judge and self._bIn == False:
+            if i >= 1:
+                if self.level2(macd, dif, dea, i):    
+                    # print("买点", day)
+                    self._bIn = True
+                    self._bTrade = True
+                    return
+        
+        if self._bIn == True:
+        # 判断是否到达止损止盈点
+            # 低于买入价，按买入止损
+            if price < self._buy_price:
+                if self.b_stop_loss(price):
+                    self._bStop = True
+                    self._bIn = False
+                    self._bTrade = True
+                    return
+            else: # 高于买入价，按浮盈止盈
+                if self.b_stop_profit(price):
+                    self._bStop = True
+                    self._bIn = False
+                    self._bTrade = True
+                    return
+            # 判断是否达到出场条件
+            if i > 2:
+                if self.b_out(macd, i):
+                    # print("卖点", day
+                    self._bIn = False
+                    self._bTrade = True
 
         
 # 实际进行回测过程
-def test_process(data_day, data_week, trade):
+def test_process(data_day, data_week, broker):
     days, days_s_slop, days_l_slop, days_close, macd, dif, dea = make_temp_data(data_day, data_week)
-    # 回测指标数据
-    total_cash = [] # 总现金
-    total_stock = [] # 总持股数
-    total_value = [] # 总持仓市值
-    total_profit = [] # 总盈利
-    total_cost = [] # 总成本
-    
     i = 0
-    bIn = False
-    bTrade = False
-    buy_days = -1 # 买入时的索引
-    buy_price = 0.0 # 买入价格
-    stop_loss = 0.05 # 买入止损比例5%
-    stop_profit = 0.1 # 止盈比例10%
-    highest_price = 0.0 # 交易时的最高价
-    stoptimes = 0 # 止损止盈卖出次数
-    bStop = False # 是否止盈止损
+    trade = Trade()
+    
     for day in days:
         # print("bug测试", cash, cash_init)
         # 进行交易
-        if bTrade == True and bIn == True:
-            trade.do_trade("buy", days_close[i])
-            buy_days = i
-            buy_price = days_close[i]
-            highest_price = buy_price
-            bTrade = False
-        elif bTrade == True and bIn == False:
-            trade.do_trade("sell", days_close[i], hold_days = i - buy_days + 1, bStop = bStop)
-            # trade.append_hold_days(i - buy_days + 1)
-            buy_days = -1
-            highest_price = 0.0
-            bTrade = False
-            bStop = False
+        trade.doTrade(broker, i, days_close[i])
 
-        trade.make_record(days_close[i])
+        broker.make_record(days_close[i])
         week = data_week[data_week.日期 <= day]
-        if days_close[i] > highest_price:
-            highest_price = days_close[i]
+        trade.record_highest_price(days_close[i])
         if len(week) == 0:
             i += 1
             continue
         else:
             week = week.iloc[-1, :]
             # print(day, week)
-        judge = week["短期均线斜率"] > 0 and week["长期均线斜率"] > 0 and week["短期均线"] > week["长期均线"]
-        if judge and bIn == False:
-           if i >= 1:
-               if macd[i] > 0 and macd[i-1] < 0 and dif[i-1] < dea[i-1] and dif[i] > dea[i]:    
-                   # print("买点", day)
-                   bIn = True
-                   bTrade = True
-                   continue
-        
-        if bIn == True:
-            # 判断是否到达止损止盈点
-            # 低于买入价，按买入止损
-            if days_close[i] < buy_price:
-                if (buy_price - days_close[i])/buy_price >= stop_loss:
-                    bStop = True
-                    stoptimes += 1
-                    bIn = False
-                    bTrade = True
-                    bStop = True
-                    continue
-            else: # 高于买入价，按浮盈止盈
-                if (highest_price - days_close[i])/highest_price >= stop_profit:
-                    bStop = True
-                    stoptimes += 1
-                    bIn = False
-                    bTrade = True
-                    bStop = True
-                    continue
-            # 判断是否达到出场条件
-            if i > 2:
-                if (macd[i-2] < 0.0 and macd[i-1] < 0.0 and macd[i] < 0.0):
-                   # print("卖点", day
-                   bIn = False
-                   bTrade = True
+        trade.step(i, days_close[i], week, macd, dif, dea)
         i += 1
 
 
@@ -392,10 +396,10 @@ def make_temp_data(data_day, data_week):
 
 # 对某只股票某个时间区间进行回测
 def backtest(code, bench_data, start_date = "20110101", end_date = "20210101"):
-    trade = Trade()
+    broker = Broker()
     data_day, data_week = make_data(code, start_date = start_date, end_date = end_date, refresh = False)
-    test_process(data_day, data_week, trade)
-    return trade.make_test_data(bench_data, code, data_day["日期"].values)
+    test_process(data_day, data_week, broker)
+    return broker.make_test_data(bench_data, code, data_day["日期"].values)
     
     
 # 画图
